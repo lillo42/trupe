@@ -2,20 +2,48 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Trupe;
 
-internal class ActorProcess(IActor actor, IMailbox mailbox)
+/// <summary>
+/// Manages the execution lifecycle and message processing for an actor instance.
+/// </summary>
+/// <remarks>
+/// This class orchestrates the core actor message loop, coordinating between
+/// the actor's behavior (<see cref="IActor"/>), message queue (<see cref="IMailbox"/>),
+/// and the runtime environment. It provides:
+/// - Lifecycle management (start/stop)
+/// - Efficient typed message dispatch using cached delegates
+/// - Integration with AOT (Ahead-Of-Time) compilation constraints
+/// - Graceful cancellation and shutdown
+/// </remarks>
+public class ActorProcess(IActor actor, IMailbox mailbox)
 {
     private static readonly ConcurrentDictionary<
         Type,
         Func<IActor, IMessage, ValueTask>
     > _typedCallHandle = new();
 
+    private CancellationTokenSource? _cts;
+
     private Task? _executing;
 
+    /// <summary>
+    /// Starts the actor message processing loop if not already running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This method is idempotent - calling it multiple times when the actor is already running
+    /// will have no effect. The message processing runs on a background thread to avoid blocking
+    /// the caller.
+    /// </para>
+    /// <para>
+    /// Once started, the actor will continuously process messages from its mailbox until
+    /// explicitly stopped or the cancellation token is triggered.
+    /// </para>
+    /// </remarks>
     public void Start()
     {
         if (_executing != null)
@@ -23,16 +51,47 @@ internal class ActorProcess(IActor actor, IMailbox mailbox)
             return;
         }
 
-        _executing = Task.Run(Run);
+        _cts = new CancellationTokenSource();
+        _executing = Task.Run(() => RunAsync(_cts.Token));
     }
 
-    private async Task Run()
+    /// <summary>
+    /// Gracefully stops the actor process and waits for completion.
+    /// </summary>
+    /// <returns>A task that completes when the actor has stopped processing messages.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method:
+    /// 1. Signals the cancellation token to stop processing new messages
+    /// 2. Waits for the current message processing loop to complete
+    /// 3. Ensures all resources are properly cleaned up
+    /// </para>
+    /// <para>
+    /// The actor will finish processing the current message (if any) before stopping,
+    /// but will not process any new messages that arrive after the cancellation is requested.
+    /// </para>
+    /// <para>
+    /// This method is safe to call multiple times and will do nothing if the actor is not running.
+    /// </para>
+    /// </remarks>
+    public async Task StopAsync()
     {
-        await foreach (var message in mailbox)
+        if (_cts == null || _executing == null)
+        {
+            return;
+        }
+
+        await _cts.CancelAsync();
+        await _executing;
+    }
+
+    private async Task RunAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var message in mailbox.WithCancellation(cancellationToken))
         {
             if (message.Value == null || !RuntimeFeature.IsDynamicCodeSupported)
             {
-                await actor.Handle(message.Value, message.CancellationToken);
+                await actor.HandleAsync(message.Value, message.CancellationToken);
                 continue;
             }
 
@@ -49,11 +108,11 @@ internal class ActorProcess(IActor actor, IMailbox mailbox)
     {
         if (actor is IHandleActorMessage<TMessage> handle)
         {
-            await handle.Handle((TMessage)message.Value!, message.CancellationToken);
+            await handle.HandleAsync((TMessage)message.Value!, message.CancellationToken);
         }
         else
         {
-            await actor.Handle(message.Value, message.CancellationToken);
+            await actor.HandleAsync(message.Value, message.CancellationToken);
         }
     }
 

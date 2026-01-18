@@ -6,7 +6,10 @@ namespace Trupe.Tests.Actors;
 
 public class SimpleActor : Actor
 {
-    public override ValueTask Handle(object? message, CancellationToken cancellationToken = default)
+    public override ValueTask HandleAsync(
+        object? message,
+        CancellationToken cancellationToken = default
+    )
     {
         if (message is SimpleMessage simpleMessage)
         {
@@ -16,4 +19,3 @@ public class SimpleActor : Actor
         return ValueTask.CompletedTask;
     }
 }
-
