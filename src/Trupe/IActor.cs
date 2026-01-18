@@ -1,13 +1,11 @@
-﻿namespace Trupe;
+﻿using System.Threading;
+using System.Threading.Tasks;
+
+namespace Trupe;
 
 public interface IActor
 {
-    IActorContext? Context { get; set; }
-    
-    ValueTask ReceiveAsync(object? message, CancellationToken cancellationToken = default);
-}
+    IActorContext Context { get; }
 
-public interface IActor<in TMessage> : IActor
-{
-    ValueTask ReceiveAsync(TMessage message, CancellationToken cancellationToken = default);
+    ValueTask Handle(object? message, CancellationToken cancellationToken = default);
 }

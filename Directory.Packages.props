@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageVersion Include="OpenTelemetry" Version="1.14.0" />
+  </ItemGroup>
+</Project>

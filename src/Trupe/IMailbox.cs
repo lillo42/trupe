@@ -1,9 +1,10 @@
-﻿namespace Trupe;
+﻿using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
-public interface IMailbox
+namespace Trupe;
+
+public interface IMailbox : IAsyncEnumerable<IMessage>
 {
-    void Enqueue(IMessage message);
     ValueTask EnqueueAsync(IMessage message, CancellationToken cancellationToken = default);
-    
-    ValueTask<IMessage> DequeueAsync(CancellationToken cancellationToken = default);
 }

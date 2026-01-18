@@ -1,17 +1,19 @@
-﻿using Trupe.Tests.Messages;
+﻿using System.Threading;
+using System.Threading.Tasks;
+using Trupe.Tests.Messages;
 
 namespace Trupe.Tests.Actors;
 
-public class SimpleActor : IActor
+public class SimpleActor : Actor
 {
-    public IActorContext? Context { get; set; }
-    public ValueTask ReceiveAsync(object? message, CancellationToken cancellationToken = default)
+    public override ValueTask Handle(object? message, CancellationToken cancellationToken = default)
     {
         if (message is SimpleMessage simpleMessage)
         {
             simpleMessage.Received = true;
         }
-            
+
         return ValueTask.CompletedTask;
     }
 }
+
