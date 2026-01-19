@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
+     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

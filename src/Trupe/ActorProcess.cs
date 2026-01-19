@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -85,22 +86,28 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         await _executing;
     }
 
+    [UnconditionalSuppressMessage(
+        "Aot",
+        "IL3050:RequiresDynamicCode",
+        Justification = "The unfriendly method is not reachable with AOT"
+    )]
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         await foreach (var message in mailbox.WithCancellation(cancellationToken))
         {
-            if (message.Value == null || !RuntimeFeature.IsDynamicCodeSupported)
+            if (RuntimeFeature.IsDynamicCodeSupported)
+            {
+                var callHandle = _typedCallHandle.GetOrAdd(
+                    message.Value.GetType(),
+                    CreateCallHandleDelegate
+                );
+
+                await callHandle(actor, message);
+            }
+            else
             {
                 await actor.HandleAsync(message.Value, message.CancellationToken);
-                continue;
             }
-
-            var callHandle = _typedCallHandle.GetOrAdd(
-                message.Value.GetType(),
-                CreateCallHandleDelegate
-            );
-
-            await callHandle(actor, message);
         }
     }
 
@@ -108,7 +115,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
     {
         if (actor is IHandleActorMessage<TMessage> handle)
         {
-            await handle.HandleAsync((TMessage)message.Value!, message.CancellationToken);
+            await handle.HandleAsync((TMessage)message.Value, message.CancellationToken);
         }
         else
         {
@@ -121,6 +128,14 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         BindingFlags.Static | BindingFlags.NonPublic
     )!;
 
+    [RequiresDynamicCode(
+        "The native code for this instantiation might not be available at runtime."
+    )]
+    [UnconditionalSuppressMessage(
+        "Aot",
+        "IL2060",
+        Justification = "The unfriendly method is not reachable with AOT"
+    )]
     private static Func<IActor, IMessage, ValueTask> CreateCallHandleDelegate(Type messageType)
     {
         var typed = s_callHandleMethodInfo.MakeGenericMethod(messageType);

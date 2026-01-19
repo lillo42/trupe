@@ -4,8 +4,7 @@ namespace Trupe;
 
 public interface IMessage
 {
-    object? Value { get; }
+    object Value { get; }
 
     CancellationToken CancellationToken { get; }
 }
-
