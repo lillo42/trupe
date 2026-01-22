@@ -85,7 +85,19 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         }
 
         await _cts.CancelAsync();
-        await _executing;
+        try
+        {
+            await _executing;
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation exceptions during shutdown
+        }
+
+        _cts.Dispose();
+
+        _cts = null;
+        _executing = null;
     }
 
     [UnconditionalSuppressMessage(

@@ -29,7 +29,7 @@ namespace Trupe.ActorReferences;
 /// </remarks>
 /// <param name="name">The unique URI identifier of the local actor.</param>
 /// <param name="mailbox">The mailbox where messages will be enqueued for the actor.</param>
-public readonly struct LocalActorReference(Uri name, IMailbox mailbox) : IActorReference
+public class LocalActorReference(Uri name, IMailbox mailbox) : IActorReference
 {
     /// <inheritdoc/>
     public Uri Name => name;

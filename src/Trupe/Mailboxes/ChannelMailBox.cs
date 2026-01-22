@@ -18,18 +18,18 @@ namespace Trupe.Mailboxes;
 /// the actor model's requirement that only one actor processes messages from its mailbox
 /// at a time, while multiple actors can send messages to it concurrently.
 /// </remarks>
-public class ChannelMailBox : IMailbox
+public class ChannelMailbox : IMailbox
 {
     private readonly Channel<IMessage> _channel;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ChannelMailBox"/>.
+    /// Initializes a new instance of the <see cref="ChannelMailbox"/>.
     /// </summary>
-    public ChannelMailBox()
+    public ChannelMailbox()
         : this(-1) { }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ChannelMailBox"/> class with
+    /// Initializes a new instance of the <see cref="ChannelMailbox"/> class with
     /// specified capacity and full mode behavior.
     /// </summary>
     /// <param name="maxSize">
@@ -59,7 +59,7 @@ public class ChannelMailBox : IMailbox
     ///
     /// Defaults to <see cref="BoundedChannelFullMode.Wait"/>.
     /// </param>
-    public ChannelMailBox(
+    public ChannelMailbox(
         int maxSize,
         BoundedChannelFullMode fullMode = BoundedChannelFullMode.Wait
     )

@@ -65,7 +65,7 @@ public abstract class Actor : IActor
     /// The context enables the actor to send responses, access system information, and interact
     /// with the actor runtime environment.
     /// </remarks>
-    public IActorContext Context { get; internal set; } = null!;
+    public IActorContext Context { get; set; } = null!;
 
     /// <summary>
     /// Handles incoming messages that are not processed by strongly-typed handlers.
