@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.gitattributes"
+      - "**/*.gitignore"
+      - "**/*.md"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: [ubuntu-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+          show-progress: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Tests
+        working-directory: tests/Trupe.Tests
+        run: dotnet run -c Release --no-restore --no-build

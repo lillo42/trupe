@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Trupe/Trupe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Trupe.Tests/Trupe.Tests.csproj" />
+  </Folder>
+</Solution>
