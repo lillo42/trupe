@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Messages;
 
-namespace Trupe;
+namespace Trupe.Mailboxes;
 
 /// <summary>
 /// Represents an actor's mailbox for asynchronous message delivery in the Trupe actor system.

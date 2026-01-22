@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Mailboxes;
+using Trupe.Messages;
 
 namespace Trupe;
 
@@ -95,10 +97,12 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
     {
         await foreach (var message in mailbox.WithCancellation(cancellationToken))
         {
+            actor.Context.Response = null;
+
             if (RuntimeFeature.IsDynamicCodeSupported)
             {
                 var callHandle = _typedCallHandle.GetOrAdd(
-                    message.Value.GetType(),
+                    message.Payload.GetType(),
                     CreateCallHandleDelegate
                 );
 
@@ -106,8 +110,15 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
             }
             else
             {
-                await actor.HandleAsync(message.Value, message.CancellationToken);
+                await actor.HandleAsync(message.Payload, message.CancellationToken);
             }
+
+            if (message is IAskMessage askMessage)
+            {
+                askMessage.SetResult(actor.Context.Response);
+            }
+
+            actor.Context.Response = null;
         }
     }
 
@@ -115,11 +126,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
     {
         if (actor is IHandleActorMessage<TMessage> handle)
         {
-            await handle.HandleAsync((TMessage)message.Value, message.CancellationToken);
+            await handle.HandleAsync((TMessage)message.Payload, message.CancellationToken);
         }
         else
         {
-            await actor.HandleAsync(message.Value, message.CancellationToken);
+            await actor.HandleAsync(message.Payload, message.CancellationToken);
         }
     }
 
