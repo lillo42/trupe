@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
+    <TargetFramework>$(TrupeTestTargetFramework)</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
