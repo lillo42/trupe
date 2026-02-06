@@ -57,9 +57,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(
-                new LocalActorReference(new Uri("trupe://system/actor"), mailbox)
-            ),
+            Context = new ActorContext(new LocalActorReference(mailbox)),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -89,9 +87,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(
-                new LocalActorReference(new Uri("trupe://system/actor"), mailbox)
-            ),
+            Context = new ActorContext(new LocalActorReference(mailbox)),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -122,9 +118,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(
-                new LocalActorReference(new Uri("trupe://system/actor"), mailbox)
-            ),
+            Context = new ActorContext(new LocalActorReference(mailbox)),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -153,9 +147,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(
-                new LocalActorReference(new Uri("trupe://system/actor"), mailbox)
-            ),
+            Context = new ActorContext(new LocalActorReference(mailbox)),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);

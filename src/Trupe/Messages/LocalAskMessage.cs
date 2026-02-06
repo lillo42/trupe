@@ -70,4 +70,10 @@ public class LocalAskMessage : IAskMessage
     {
         _tcs.TrySetException(exception);
     }
+
+    /// <inheritdoc />
+    public void SetCanceled()
+    {
+        _tcs.TrySetCanceled();
+    }
 }

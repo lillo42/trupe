@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Exceptions;
@@ -68,11 +69,63 @@ public abstract class Actor : IActor
     public IActorContext Context { get; set; } = null!;
 
     /// <summary>
+    /// Called when the actor is first initialized, before it starts processing messages.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous initialization operation.</returns>
+    /// <remarks>
+    /// Override this method to perform any setup or initialization logic required before
+    /// the actor begins handling messages. This is called once per actor lifetime.
+    /// </remarks>
+    public virtual ValueTask InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Called after the actor has been restarted following a failure.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Override this method to perform any recovery or reinitialization logic after a restart.
+    /// This is invoked after the actor state has been reset and before message processing resumes.
+    /// </remarks>
+    public virtual ValueTask AfterRestartAsync(CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Called before the actor is restarted after a failure.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Override this method to perform cleanup or state preservation logic before a restart.
+    /// This is invoked when a failure occurs and the actor is about to be restarted.
+    /// </remarks>
+    public virtual ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Handles incoming messages that are not processed by strongly-typed handlers.
     /// </summary>
+    /// <param name="message">The message to be handled. Can be null.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous message handling operation.</returns>
+    /// <exception cref="UnhandleMessageException">
+    /// Thrown by default when no handler is defined for the message type.
+    /// </exception>
     /// <remarks>
+    /// This method is called as a fallback when:
     /// 1. The actor doesn't implement <see cref="IHandleActorMessage{TMessage}"/> for the specific message type
     /// 2. No matching strongly-typed handler is found for the incoming message
+    /// 
+    /// The default implementation throws <see cref="UnhandleMessageException"/>. Override this method
+    /// to provide custom handling for untyped messages or to implement a catch-all message handler.
     /// </remarks>
     public virtual ValueTask HandleAsync(
         object? message,

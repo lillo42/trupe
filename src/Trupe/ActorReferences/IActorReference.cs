@@ -20,17 +20,8 @@ namespace Trupe.ActorReferences;
 /// and request-response (<see cref="Ask{TRequest, TResponse}"/>) messaging patterns.
 /// </para>
 /// </remarks>
-public interface IActorReference
+public interface IActorReference : IEquatable<IActorReference>
 {
-    /// <summary>
-    /// Gets the unique Uniform Resource Identifier (URI) identifier of the referenced actor.
-    /// </summary>
-    /// <value>
-    /// A <see cref="Uri"/> that uniquely identifies the actor within the actor system.
-    /// The URI format follows: <c>trupe://[system]/[actor-path]</c>
-    /// </value>
-    Uri Name { get; }
-
     /// <summary>
     /// Sends a request message to the actor and synchronously waits for a response.
     /// </summary>

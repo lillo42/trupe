@@ -32,4 +32,13 @@ public interface IAskMessage : IMessage
     /// </summary>
     /// <param name="exception">The exception that occurred during actor processing.</param>
     void SetException(Exception exception);
+
+    /// <summary>
+    /// Completes the associated task with a canceled state.
+    /// </summary>
+    /// <remarks>
+    /// This method should be called when the operation is canceled, typically in response
+    /// to a cancellation token. The awaiting sender will receive an <see cref="OperationCanceledException"/>.
+    /// </remarks>
+    void SetCanceled();
 }

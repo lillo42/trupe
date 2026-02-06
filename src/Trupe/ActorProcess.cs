@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Events;
+using Trupe.Exceptions;
 using Trupe.Mailboxes;
 using Trupe.Messages;
+using Trupe.SystemMessages;
 
 namespace Trupe;
 
@@ -24,30 +28,51 @@ namespace Trupe;
 /// </remarks>
 public class ActorProcess(IActor actor, IMailbox mailbox)
 {
+    /// <summary>
+    /// Cache for typed message handler delegates, keyed by message payload type.
+    /// This avoids reflection overhead on every message by caching the delegate once per type.
+    /// </summary>
     private static readonly ConcurrentDictionary<
         Type,
-        Func<IActor, IMessage, ValueTask>
+        Func<IActor, IMessage, CancellationToken, ValueTask>
     > _typedCallHandle = new();
 
+    /// <summary>
+    /// Cancellation token source used to signal the actor to stop processing messages.
+    /// </summary>
     private CancellationTokenSource? _cts;
 
+    /// <summary>
+    /// The task representing the actor's message processing loop.
+    /// </summary>
     private Task? _executing;
 
     /// <summary>
-    /// Starts the actor message processing loop if not already running.
+    /// Event raised when an unhandled exception occurs during message processing.
     /// </summary>
     /// <remarks>
+    /// Subscribers can use this event to implement supervision strategies such as
+    /// restarting the actor, escalating the failure, or logging the error.
+    /// </remarks>
+    public event EventHandler<ActorFailureEventArgs>? Failure;
+
+    /// <summary>
+    /// Starts the actor's message processing loop.
+    /// </summary>
+    /// <param name="messages">
+    /// Optional initial messages to process before consuming from the mailbox.
+    /// These are typically system messages like <see cref="InitializeActor"/>.
+    /// </param>
+    /// <remarks>
     /// <para>
-    /// This method is idempotent - calling it multiple times when the actor is already running
-    /// will have no effect. The message processing runs on a background thread to avoid blocking
-    /// the caller.
+    /// This method is idempotent - calling it on an already running actor has no effect.
     /// </para>
     /// <para>
-    /// Once started, the actor will continuously process messages from its mailbox until
-    /// explicitly stopped or the cancellation token is triggered.
+    /// The actor will first process any provided initial messages, then begin
+    /// consuming and processing messages from its mailbox.
     /// </para>
     /// </remarks>
-    public void Start()
+    public void Start(params IMessage[] messages)
     {
         if (_executing != null)
         {
@@ -55,7 +80,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         }
 
         _cts = new CancellationTokenSource();
-        _executing = Task.Run(() => RunAsync(_cts.Token));
+        _executing = Task.Run(() => RunAsync(new Queue<IMessage>(messages), _cts.Token));
     }
 
     /// <summary>
@@ -100,29 +125,90 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         _executing = null;
     }
 
+    /// <summary>
+    /// Executes the actor's main message processing loop.
+    /// </summary>
+    /// <param name="messages">Initial messages to process before consuming from the mailbox.</param>
+    /// <param name="cancellationToken">Token to signal the loop to stop.</param>
+    /// <returns>A task representing the message processing loop.</returns>
+    private async Task RunAsync(Queue<IMessage> messages, CancellationToken cancellationToken)
+    {
+        while (messages.TryDequeue(out var message))
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                message.CancellationToken
+            );
+
+            if (!await ProcessAsync(actor, message, cts.Token))
+            {
+                return;
+            }
+        }
+
+        await foreach (var message in mailbox.WithCancellation(cancellationToken))
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                message.CancellationToken
+            );
+
+            if (!await ProcessAsync(actor, message, cts.Token))
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes a single message by dispatching it to the appropriate handler.
+    /// </summary>
+    /// <param name="actor">The actor instance to process the message.</param>
+    /// <param name="message">The message to process.</param>
+    /// <param name="cancellationToken">Token to cancel the processing.</param>
+    /// <returns>
+    /// <c>true</c> if processing completed successfully and the loop should continue;
+    /// <c>false</c> if an unhandled exception occurred and the loop should stop.
+    /// </returns>
+    /// <remarks>
+    /// This method handles system messages (<see cref="InitializeActor"/>, <see cref="AfterRestartActor"/>),
+    /// typed message dispatch, and response handling for ask-pattern messages.
+    /// </remarks>
     [UnconditionalSuppressMessage(
         "Aot",
         "IL3050:RequiresDynamicCode",
         Justification = "The unfriendly method is not reachable with AOT"
     )]
-    private async Task RunAsync(CancellationToken cancellationToken)
+    private async ValueTask<bool> ProcessAsync(
+        IActor actor,
+        IMessage message,
+        CancellationToken cancellationToken
+    )
     {
-        await foreach (var message in mailbox.WithCancellation(cancellationToken))
-        {
-            actor.Context.Response = null;
+        actor.Context.Response = null;
 
-            if (RuntimeFeature.IsDynamicCodeSupported)
+        try
+        {
+            if (message.Payload is InitializeActor)
+            {
+                await actor.InitializeAsync(cancellationToken);
+            }
+            else if (message.Payload is AfterRestartActor)
+            {
+                await actor.AfterRestartAsync(cancellationToken);
+            }
+            else if (RuntimeFeature.IsDynamicCodeSupported)
             {
                 var callHandle = _typedCallHandle.GetOrAdd(
                     message.Payload.GetType(),
                     CreateCallHandleDelegate
                 );
 
-                await callHandle(actor, message);
+                await callHandle(actor, message, cancellationToken);
             }
             else
             {
-                await actor.HandleAsync(message.Payload, message.CancellationToken);
+                await actor.HandleAsync(message.Payload, cancellationToken);
             }
 
             if (message is IAskMessage askMessage)
@@ -132,25 +218,65 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
 
             actor.Context.Response = null;
         }
+        catch (AskException ex)
+        {
+            if (message is IAskMessage askMessage)
+            {
+                askMessage.SetException(ex);
+            }
+        }
+        catch (Exception ex)
+        {
+            Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
+
+            return false;
+        }
+
+        return true;
     }
 
-    private static async ValueTask CallHandle<TMessage>(IActor actor, IMessage message)
+    /// <summary>
+    /// Invokes the typed message handler for a specific message type.
+    /// </summary>
+    /// <typeparam name="TMessage">The type of the message payload.</typeparam>
+    /// <param name="actor">The actor to handle the message.</param>
+    /// <param name="message">The message containing the payload.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A task representing the handler execution.</returns>
+    private static async ValueTask CallHandle<TMessage>(
+        IActor actor,
+        IMessage message,
+        CancellationToken cancellationToken
+    )
     {
         if (actor is IHandleActorMessage<TMessage> handle)
         {
-            await handle.HandleAsync((TMessage)message.Payload, message.CancellationToken);
+            await handle.HandleAsync((TMessage)message.Payload, cancellationToken);
         }
         else
         {
-            await actor.HandleAsync(message.Payload, message.CancellationToken);
+            await actor.HandleAsync(message.Payload, cancellationToken);
         }
     }
 
+    /// <summary>
+    /// Cached <see cref="MethodInfo"/> for the <see cref="CallHandle{TMessage}"/> method,
+    /// used to create typed delegates at runtime.
+    /// </summary>
     private static readonly MethodInfo s_callHandleMethodInfo = typeof(ActorProcess).GetMethod(
         nameof(CallHandle),
         BindingFlags.Static | BindingFlags.NonPublic
     )!;
 
+    /// <summary>
+    /// Creates a delegate for invoking the typed message handler for a specific message type.
+    /// </summary>
+    /// <param name="messageType">The type of the message payload.</param>
+    /// <returns>A delegate that invokes the typed handler for the specified message type.</returns>
+    /// <remarks>
+    /// This method uses reflection to create a generic delegate, which is then cached
+    /// in <see cref="_typedCallHandle"/> for subsequent calls with the same message type.
+    /// </remarks>
     [RequiresDynamicCode(
         "The native code for this instantiation might not be available at runtime."
     )]
@@ -159,9 +285,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         "IL2060",
         Justification = "The unfriendly method is not reachable with AOT"
     )]
-    private static Func<IActor, IMessage, ValueTask> CreateCallHandleDelegate(Type messageType)
+    private static Func<IActor, IMessage, CancellationToken, ValueTask> CreateCallHandleDelegate(
+        Type messageType
+    )
     {
         var typed = s_callHandleMethodInfo.MakeGenericMethod(messageType);
-        return typed.CreateDelegate<Func<IActor, IMessage, ValueTask>>();
+        return typed.CreateDelegate<Func<IActor, IMessage, CancellationToken, ValueTask>>();
     }
 }
