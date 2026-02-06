@@ -77,7 +77,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// If this window elapses without a restart, the restart count is reset.
     /// Default is 5 seconds.
     /// </summary>
-    protected virtual TimeSpan RestartWindow { get; } = TimeSpan.FromSeconds(5);
+    protected virtual TimeSpan RestartWindow => TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Gets the list of supervised actor metadata.
@@ -201,7 +201,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild<
+    protected virtual IActorReference AddChild<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >()
         where TActor : IActor
@@ -218,7 +218,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild<
+    protected virtual IActorReference AddChild<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >(IMailbox mailbox)
         where TActor : IActor
@@ -234,7 +234,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild(Type actorType)
+    protected virtual IActorReference AddChild(Type actorType)
     {
         return AddChild(actorType, new ChannelMailbox());
     }
@@ -248,7 +248,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild(Type actorType, IMailbox mailbox)
+    protected virtual IActorReference AddChild(Type actorType, IMailbox mailbox)
     {
         if (_initialized)
         {
@@ -272,7 +272,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync<
+    protected virtual ValueTask<IActorReference> AddChildAsync<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
@@ -290,7 +290,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync<
+    protected virtual ValueTask<IActorReference> AddChildAsync<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >(IMailbox mailbox, CancellationToken cancellationToken = default)
         where TActor : IActor
@@ -307,7 +307,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync(
+    protected virtual ValueTask<IActorReference> AddChildAsync(
         Type actorType,
         CancellationToken cancellationToken = default
     )
@@ -325,7 +325,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync(
+    protected virtual ValueTask<IActorReference> AddChildAsync(
         Type actorType,
         IMailbox mailbox,
         CancellationToken cancellationToken = default
