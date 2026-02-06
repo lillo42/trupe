@@ -27,12 +27,10 @@ namespace Trupe.ActorReferences;
 /// implementation.
 /// </para>
 /// </remarks>
-/// <param name="name">The unique URI identifier of the local actor.</param>
 /// <param name="mailbox">The mailbox where messages will be enqueued for the actor.</param>
-public class LocalActorReference(Uri name, IMailbox mailbox) : IActorReference
+public class LocalActorReference(IMailbox mailbox) : IActorReference
 {
-    /// <inheritdoc/>
-    public Uri Name => name;
+    private readonly string _referenceId = Uuid.NewUuid().ToString();
 
     /// <inheritdoc/>
     /// <remarks>
@@ -204,5 +202,33 @@ public class LocalActorReference(Uri name, IMailbox mailbox) : IActorReference
             new LocalTellMessage(message, CancellationToken.None),
             cancellationToken
         );
+    }
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        return _referenceId.GetHashCode();
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj)
+    {
+        return obj is IActorReference other && Equals(other);
+    }
+
+    /// <inheritdoc />
+    public bool Equals(IActorReference? other)
+    {
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        if (other is not LocalActorReference localReference)
+        {
+            return false;
+        }
+
+        return localReference._referenceId == _referenceId;
     }
 }

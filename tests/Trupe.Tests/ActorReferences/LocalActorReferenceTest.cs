@@ -17,7 +17,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         actorRef.Tell(message);
@@ -40,7 +40,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
@@ -57,7 +57,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         await actorRef.TellAsync(message, cancellationToken);
@@ -80,7 +80,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
@@ -100,7 +100,7 @@ public class LocalActorReferenceTest
         var responseValue = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         var task = Task.Run(
@@ -134,7 +134,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
@@ -152,7 +152,7 @@ public class LocalActorReferenceTest
         var responseValue = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         var task = Task.Run(
@@ -186,7 +186,7 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(new Uri("/", UriKind.RelativeOrAbsolute), mailbox);
+        var actorRef = new LocalActorReference(mailbox);
 
         // Act
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);

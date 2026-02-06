@@ -20,7 +20,10 @@ namespace Trupe.Mailboxes;
 /// </remarks>
 public class ChannelMailbox : IMailbox
 {
-    private readonly Channel<IMessage> _channel;
+    private readonly int _maxSize;
+    private readonly BoundedChannelFullMode _fullMode;
+
+    private Channel<IMessage> _channel;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChannelMailbox"/>.
@@ -64,23 +67,36 @@ public class ChannelMailbox : IMailbox
         BoundedChannelFullMode fullMode = BoundedChannelFullMode.Wait
     )
     {
-        if (maxSize <= 0)
+        _maxSize = maxSize;
+        _fullMode = fullMode;
+        _channel = CreateChannel();
+    }
+
+    private Channel<IMessage> CreateChannel()
+    {
+        if (_maxSize <= 0)
         {
-            _channel = Channel.CreateUnbounded<IMessage>(
+            return Channel.CreateUnbounded<IMessage>(
                 new UnboundedChannelOptions { SingleReader = true, SingleWriter = false }
             );
         }
         else
         {
-            _channel = Channel.CreateBounded<IMessage>(
-                new BoundedChannelOptions(maxSize)
+            return Channel.CreateBounded<IMessage>(
+                new BoundedChannelOptions(_maxSize)
                 {
                     SingleReader = true,
                     SingleWriter = false,
-                    FullMode = fullMode,
+                    FullMode = _fullMode,
                 }
             );
         }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask CleanAsync()
+    {
+        _channel = CreateChannel();
     }
 
     /// <summary>

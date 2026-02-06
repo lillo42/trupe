@@ -31,7 +31,7 @@ public interface IActor
     /// An <see cref="IActorContext"/> instance that provides the actor's execution context.
     /// This context is used for all interactions with the actor system.
     /// </value>
-    IActorContext Context { get; }
+    IActorContext Context { get; set; }
 
     /// <summary>
     /// Fallback message handler for processing incoming messages.
@@ -48,4 +48,37 @@ public interface IActor
     /// message handling through the IHandleActorMessage interface.
     /// </remarks>
     ValueTask HandleAsync(object? message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Initializes the actor after it has been created and before it starts processing messages.
+    /// </summary>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests. Defaults to default(CancellationToken).</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous initialization operation.</returns>
+    /// <remarks>
+    /// This method is called once during the actor's lifecycle, allowing the actor to perform
+    /// setup operations such as acquiring resources, subscribing to events, or initializing state.
+    /// </remarks>
+    ValueTask InitializeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Called before the actor is restarted due to a failure, allowing cleanup of resources.
+    /// </summary>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests. Defaults to default(CancellationToken).</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// This lifecycle hook is invoked when the supervisor decides to restart the actor after a failure.
+    /// Use this method to release resources, cancel ongoing operations, or perform cleanup before restart.
+    /// </remarks>
+    ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Called after the actor has been restarted, allowing re-initialization of state and resources.
+    /// </summary>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests. Defaults to default(CancellationToken).</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// This lifecycle hook is invoked after the actor has been restarted by its supervisor.
+    /// Use this method to re-establish connections, re-acquire resources, or restore state after a restart.
+    /// </remarks>
+    ValueTask AfterRestartAsync(CancellationToken cancellationToken = default);
 }
