@@ -82,7 +82,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Gets the list of supervised actor metadata.
     /// </summary>
-    protected ImmutableList<ActorMetadata> Actors { get; private set; } = [];
+    protected ImmutableList<ActorMetadata> Actors { get; set; } = [];
 
     /// <summary>
     /// Gets the references to all child actors managed by this supervisor.
@@ -131,15 +131,20 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         CancellationToken cancellationToken = default
     )
     {
+        LoggerMessages.ProcessingFailedActor(Logger, message.Exception);
+
         var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
         if (metadata == null)
         {
+            LoggerMessages.ActorNotFound(Logger);
             return;
         }
 
         ResetCounter(metadata);
 
         var action = GetFailureAction(metadata, message.Exception);
+        LoggerMessages.GoingToApplyFailureAction(Logger, action, Strategy);
+
         if (action == FailureAction.Restart)
         {
             await ApplyRestartAsync(metadata);
@@ -159,6 +164,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
         if (message.Message is IAskMessage askMessage)
         {
+            LoggerMessages.CancelAskMessage(Logger);
             askMessage.SetCanceled();
         }
 
@@ -169,6 +175,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             }
         )
         {
+            LoggerMessages.CancelAskMessage(Logger);
             escalateAskMessage.SetCanceled();
         }
     }
@@ -369,7 +376,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         var now = DateTimeOffset.UtcNow;
         if ((now - metadata.LastRestartTime) > RestartWindow)
         {
-            LoggerMessages.ResetingActorCounter(Logger, metadata.ActorType);
+            LoggerMessages.ResettingActorRestartCounter(Logger, metadata.ActorType);
             metadata.RestartCount = 0;
         }
     }
@@ -414,8 +421,10 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A task representing the stop operation.</returns>
     protected virtual async Task StopActorAsync(ActorMetadata metadata)
     {
+        LoggerMessages.StoppingActor(Logger);
         metadata.Process.Failure -= HandleFailure;
         await metadata.Process.StopAsync();
+        LoggerMessages.ActorStopped(Logger);
     }
 
     /// <summary>
@@ -425,8 +434,10 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A task representing the resume operation.</returns>
     protected virtual async Task ApplyResumeAsync(ActorMetadata metadata)
     {
+        LoggerMessages.ResumingActor(Logger);
         await metadata.Process.StopAsync();
         metadata.Process.Start();
+        LoggerMessages.ActorResumed(Logger);
     }
 
     /// <summary>
@@ -443,6 +454,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         Exception exception
     )
     {
+        LoggerMessages.EscalatingError(Logger);
         await metadata.Process.StopAsync();
         throw new EscalateFailureException(
             "Unable to handle actor failure",
@@ -479,6 +491,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A task representing the reset operation.</returns>
     protected virtual async Task ResetActorAsync(ActorMetadata metadata)
     {
+        LoggerMessages.ResettingActor(Logger);
         await StopActorAsync(metadata);
         await BeforeRestartActorAsync(metadata);
 
@@ -486,15 +499,19 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
         await ResetMailboxAsync(metadata);
 
+        LoggerMessages.CreatingNewActorInstance(Logger);
         metadata.Actor = ActorFactory.CreateActor(metadata.ActorType);
         metadata.Actor.Context = new ActorContext(metadata.Reference);
+        LoggerMessages.ActorCreatedWithSuccess(Logger);
 
+        LoggerMessages.CreateNewProcess(Logger);
         metadata.Process = new ActorProcess(metadata.Actor, metadata.Mailbox);
         metadata.Process.Failure += HandleFailure;
         metadata.Process.Start(
             new LocalTellMessage(new InitializeActor()),
             new LocalTellMessage(new AfterRestartActor())
         );
+        LoggerMessages.ActorProcessStarted(Logger);
     }
 
     /// <summary>
@@ -506,11 +523,13 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         try
         {
+            LoggerMessages.CallBeforeRestartActor(Logger);
             await metadata.Actor.BeforeRestartAsync();
+            LoggerMessages.SuccessBeforeRestartActor(Logger);
         }
         catch (Exception ex)
         {
-            LoggerMessages.WarningRestartingActor(Logger, metadata.ActorType, ex);
+            LoggerMessages.ErrorDuringCallBeforeRestartActor(Logger, ex);
         }
     }
 
@@ -521,6 +540,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="args">The failure event arguments.</param>
     protected virtual void HandleFailure(object? sender, ActorFailureEventArgs args)
     {
+        LoggerMessages.HandlingFailedActor(Logger, args.Exception);
         Context.Self.Tell(new ActorFailed(args.Actor, args.Message, args.Exception));
     }
 
@@ -615,19 +635,103 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     private static partial class LoggerMessages
     {
         [LoggerMessage(
-            Level = LogLevel.Debug,
-            Message = "Resetting actor counter for actor type {ActorType}."
+            Level = LogLevel.Information,
+            Message = "Received failure notification from child actor"
         )]
-        public static partial void ResetingActorCounter(ILogger logger, Type actorType);
+        public static partial void HandlingFailedActor(ILogger logger, Exception exception);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Processing actor failure for supervised child"
+        )]
+        public static partial void ProcessingFailedActor(ILogger logger, Exception exception);
+
+        [LoggerMessage(
+            Level = LogLevel.Error,
+            Message = "Failed actor not found in supervised children list"
+        )]
+        public static partial void ActorNotFound(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Canceling pending ask message due to actor failure"
+        )]
+        public static partial void CancelAskMessage(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Applying failure action '{FailureAction}' using '{Strategy}' strategy"
+        )]
+        public static partial void GoingToApplyFailureAction(
+            ILogger logger,
+            FailureAction failureAction,
+            Strategy strategy
+        );
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Resuming actor after failure")]
+        public static partial void ResumingActor(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Actor resumed and ready to process messages"
+        )]
+        public static partial void ActorResumed(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
+        public static partial void ResettingActor(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
+        public static partial void ActorRestarted(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Stopping actor process")]
+        public static partial void StoppingActor(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor process stopped successfully")]
+        public static partial void ActorStopped(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Invoking BeforeRestartAsync on actor")]
+        public static partial void CallBeforeRestartActor(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "BeforeRestartAsync completed successfully"
+        )]
+        public static partial void SuccessBeforeRestartActor(ILogger logger);
 
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "Restarting actor of type {ActorType} due to exception"
+            Message = "BeforeRestartAsync threw an exception, ignoring and continuing with restart"
         )]
-        public static partial void WarningRestartingActor(
+        public static partial void ErrorDuringCallBeforeRestartActor(
             ILogger logger,
-            Type actorType,
             Exception exception
         );
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Creating new actor instance for restart")]
+        public static partial void CreatingNewActorInstance(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
+        public static partial void ActorCreatedWithSuccess(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Creating and starting actor process with InitializeActor and AfterRestartActor messages"
+        )]
+        public static partial void CreateNewProcess(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Actor process started and processing messages"
+        )]
+        public static partial void ActorProcessStarted(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
+        public static partial void EscalatingError(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Resetting restart counter for actor type '{ActorType}' after restart window elapsed"
+        )]
+        public static partial void ResettingActorRestartCounter(ILogger logger, Type actorType);
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -16,10 +17,23 @@ namespace Trupe.Supervisors;
 /// <param name="actorFactory">The factory used to create child actors.</param>
 /// <param name="logger">The logger instance for logging supervisor activities.</param>
 public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logger)
-    : Supervisor(actorFactory, logger)
+    : Supervisor(actorFactory, logger),
+        IHandleActorMessage<RemoveChild>
 {
     /// <inheritdoc />
     protected sealed override Strategy Strategy => Strategy.OneForOne;
+
+    /// <inheritdoc />
+    public ValueTask HandleAsync(RemoveChild message, CancellationToken cancellationToken = default)
+    {
+        var actor = Actors.FirstOrDefault(x => x.Reference == message.Reference);
+        if (actor != null)
+        {
+            Actors = Actors.Remove(actor);
+        }
+
+        return ValueTask.CompletedTask;
+    }
 
     /// <inheritdoc />
     protected override IActorReference AddChild(Type actorType, IMailbox mailbox)
@@ -58,5 +72,18 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
             await val;
             return actorRef;
         }
+    }
+
+    protected virtual void RemoveActor(IActorReference actor)
+    {
+        Context.Self.Tell(new RemoveChild(actor));
+    }
+
+    protected virtual ValueTask RemoveActorAsync(
+        IActorReference actor,
+        CancellationToken cancellationToken = default
+    )
+    {
+        return Context.Self.TellAsync(new RemoveChild(actor), cancellationToken);
     }
 }
