@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Events;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 
@@ -30,7 +31,10 @@ namespace Trupe.ActorReferences;
 /// <param name="mailbox">The mailbox where messages will be enqueued for the actor.</param>
 public class LocalActorReference(IMailbox mailbox) : IActorReference
 {
-    private readonly string _referenceId = Uuid.NewUuid().ToString();
+    private readonly IMailbox _mailbox = mailbox;
+
+    /// <inheritdoc />
+    public event EventHandler<TerminatedEventArgs>? OnTerminate;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -106,7 +110,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     {
         var message = new LocalAskMessage(request, cancellationToken);
 
-        await mailbox.EnqueueAsync(message, cancellationToken);
+        await _mailbox.EnqueueAsync(message, cancellationToken);
 
         var response = await message.AsTask();
 
@@ -192,22 +196,31 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>
     /// before the message is successfully enqueued.
     /// </exception>
-    public async ValueTask TellAsync<TMessage>(
+    public ValueTask TellAsync<TMessage>(
         TMessage message,
         CancellationToken cancellationToken = default
     )
         where TMessage : notnull
     {
-        await mailbox.EnqueueAsync(
+        return _mailbox.EnqueueAsync(
             new LocalTellMessage(message, CancellationToken.None),
             cancellationToken
         );
     }
 
+    /// <summary>
+    /// Terminates this actor reference and raises the <see cref="OnTerminate"/> event.
+    /// </summary>
+    /// <param name="reason">An optional reason describing why the actor was terminated.</param>
+    public void Terminate(string? reason)
+    {
+        OnTerminate?.Invoke(this, new TerminatedEventArgs(this, reason));
+    }
+
     /// <inheritdoc />
     public override int GetHashCode()
     {
-        return _referenceId.GetHashCode();
+        return _mailbox.GetHashCode();
     }
 
     /// <inheritdoc />
@@ -229,6 +242,6 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
             return false;
         }
 
-        return localReference._referenceId == _referenceId;
+        return localReference._mailbox == _mailbox;
     }
 }

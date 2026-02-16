@@ -26,7 +26,7 @@ namespace Trupe;
 /// - Integration with AOT (Ahead-Of-Time) compilation constraints
 /// - Graceful cancellation and shutdown
 /// </remarks>
-public class ActorProcess(IActor actor, IMailbox mailbox)
+public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 {
     /// <summary>
     /// Cache for typed message handler delegates, keyed by message payload type.
@@ -55,6 +55,15 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
     /// restarting the actor, escalating the failure, or logging the error.
     /// </remarks>
     public event EventHandler<ActorFailureEventArgs>? Failure;
+
+    /// <summary>
+    /// Event raised when the actor receives a <see cref="Messages.Terminate"/> message and stops processing.
+    /// </summary>
+    /// <remarks>
+    /// Subscribers can use this event to detect voluntary actor termination, as opposed to
+    /// failure-based termination signaled through the <see cref="Failure"/> event.
+    /// </remarks>
+    public event EventHandler<ActorTerminateEventArgs>? Terminate;
 
     /// <summary>
     /// Starts the actor's message processing loop.
@@ -197,6 +206,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
             {
                 await actor.AfterRestartAsync(cancellationToken);
             }
+            else if (message.Payload is Terminate terminate)
+            {
+                Terminate?.Invoke(this, new ActorTerminateEventArgs(actor, terminate.Reason));
+                return false;
+            }
             else if (RuntimeFeature.IsDynamicCodeSupported)
             {
                 var callHandle = _typedCallHandle.GetOrAdd(
@@ -228,7 +242,6 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
         catch (Exception ex)
         {
             Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
-
             return false;
         }
 
@@ -291,5 +304,19 @@ public class ActorProcess(IActor actor, IMailbox mailbox)
     {
         var typed = s_callHandleMethodInfo.MakeGenericMethod(messageType);
         return typed.CreateDelegate<Func<IActor, IMessage, CancellationToken, ValueTask>>();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Stops the actor process and removes all event handler subscriptions.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        GC.SuppressFinalize(this);
+
+        await StopAsync();
+
+        Delegate.RemoveAll(Failure, Failure);
+        Delegate.RemoveAll(Terminate, Terminate);
     }
 }

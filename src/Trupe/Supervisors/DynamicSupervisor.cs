@@ -23,16 +23,30 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
     /// <inheritdoc />
     protected sealed override Strategy Strategy => Strategy.OneForOne;
 
-    /// <inheritdoc />
-    public ValueTask HandleAsync(RemoveChild message, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Handles the <see cref="RemoveChild"/> message by removing the specified child actor
+    /// from the supervisor, stopping it, and disposing of its resources.
+    /// </summary>
+    /// <param name="message">The message containing the actor to remove.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    public async ValueTask HandleAsync(
+        RemoveChild message,
+        CancellationToken cancellationToken = default
+    )
     {
-        var actor = Actors.FirstOrDefault(x => x.Reference == message.Reference);
-        if (actor != null)
-        {
-            Actors = Actors.Remove(actor);
-        }
+        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
 
-        return ValueTask.CompletedTask;
+        if (metadata != null)
+        {
+            Actors = Actors.Remove(metadata);
+
+            await StopActorAsync(metadata);
+            await DisposeObjectAsync(metadata.Actor);
+            await metadata.Process.DisposeAsync();
+
+            metadata.Actor = null!;
+            metadata.Process = null!;
+        }
     }
 
     /// <inheritdoc />
@@ -42,6 +56,29 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
         Context.Self.Tell(new AddActor(actorType, mailbox, actorRef));
 
         return actorRef;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// In addition to the base behavior, if the <see cref="Supervisor.Restart"/> policy is
+    /// <see cref="RestartPolicy.Transient"/>, the terminated actor is removed from the
+    /// supervised actors list instead of being restarted.
+    /// </remarks>
+    public override async ValueTask HandleAsync(
+        ActorTerminated message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await base.HandleAsync(message, cancellationToken);
+
+        if (Restart == RestartPolicy.Transient)
+        {
+            var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
+            if (metadata != null)
+            {
+                Actors = Actors.Remove(metadata);
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -74,16 +111,36 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
         }
     }
 
-    protected virtual void RemoveActor(IActorReference actor)
+    /// <summary>
+    /// Removes a child actor from this supervisor by sending a <see cref="RemoveChild"/> command.
+    /// </summary>
+    /// <param name="reference">The actor reference identifying the child actor to remove.</param>
+    protected virtual void RemoveActor(IActorReference reference)
     {
-        Context.Self.Tell(new RemoveChild(actor));
+        var metadata = Actors.FirstOrDefault(x => x.Reference == reference);
+        if (metadata != null)
+        {
+            Context.Self.Tell(new RemoveChild(metadata.Actor));
+        }
     }
 
+    /// <summary>
+    /// Asynchronously removes a child actor from this supervisor by sending a <see cref="RemoveChild"/> command.
+    /// </summary>
+    /// <param name="reference">The actor reference identifying the child actor to remove.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when the removal command has been sent.</returns>
     protected virtual ValueTask RemoveActorAsync(
-        IActorReference actor,
+        IActorReference reference,
         CancellationToken cancellationToken = default
     )
     {
-        return Context.Self.TellAsync(new RemoveChild(actor), cancellationToken);
+        var metadata = Actors.FirstOrDefault(x => x.Reference == reference);
+        if (metadata != null)
+        {
+            return Context.Self.TellAsync(new RemoveChild(metadata.Actor), cancellationToken);
+        }
+
+        return ValueTask.CompletedTask;
     }
 }

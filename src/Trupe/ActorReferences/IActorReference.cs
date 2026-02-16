@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Events;
 
 namespace Trupe.ActorReferences;
 
@@ -23,6 +24,15 @@ namespace Trupe.ActorReferences;
 public interface IActorReference : IEquatable<IActorReference>
 {
     /// <summary>
+    /// Occurs when the referenced actor is terminated.
+    /// </summary>
+    /// <remarks>
+    /// Subscribers are notified when the actor stops, allowing dependent components
+    /// to react to actor lifecycle changes (e.g., cleanup or restart logic).
+    /// </remarks>
+    event EventHandler<TerminatedEventArgs>? OnTerminate;
+
+    /// <summary>
     /// Sends a request message to the actor and synchronously waits for a response.
     /// </summary>
     /// <typeparam name="TRequest">The type of the request message. Must be a non-nullable type.</typeparam>
@@ -43,7 +53,6 @@ public interface IActorReference : IEquatable<IActorReference>
     /// cleaned up after the response is received or the timeout expires.
     /// </para>
     /// <exception cref="TimeoutException">Thrown when the specified timeout expires before receiving a response.</exception>
-    /// <exception cref="ActorUnavailableException">Thrown when the target actor is unavailable or terminated.</exception>
     /// </remarks>
     TResponse Ask<TRequest, TResponse>(TRequest request, TimeSpan? timeout = null)
         where TRequest : notnull;

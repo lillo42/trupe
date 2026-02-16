@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -7,18 +8,21 @@ using Trupe.Messages;
 namespace Trupe.Mailboxes;
 
 /// <summary>
-/// Mailbox implementation using <see cref="Channel{T}"/> for actor message queuing.
+/// An <see cref="IMailbox"/> implementation backed by <see cref="Channel{T}"/> for high-performance,
+/// asynchronous actor message queuing.
 /// </summary>
 /// <remarks>
-/// This class provides a high-performance, asynchronous mailbox implementation for actors
-/// using .NET's Channel<T> infrastructure. It supports both unbounded and bounded channel
-/// configurations with customizable behavior when the channel is full.
-///
-/// The mailbox is designed for single-reader, multiple-writer scenarios which aligns with
-/// the actor model's requirement that only one actor processes messages from its mailbox
-/// at a time, while multiple actors can send messages to it concurrently.
+/// <para>
+/// Supports both unbounded and bounded channel configurations with customizable
+/// behavior when the channel is full (see <see cref="BoundedChannelFullMode"/>).
+/// </para>
+/// <para>
+/// The mailbox is configured for single-reader, multiple-writer access, which aligns
+/// with the actor model's guarantee that only one actor processes its mailbox at a time
+/// while multiple actors can send messages concurrently.
+/// </para>
 /// </remarks>
-public class ChannelMailbox : IMailbox
+public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
 {
     private readonly int _maxSize;
     private readonly BoundedChannelFullMode _fullMode;
@@ -99,26 +103,7 @@ public class ChannelMailbox : IMailbox
         _channel = CreateChannel();
     }
 
-    /// <summary>
-    /// Asynchronously enqueues a message into the mailbox.
-    /// </summary>
-    /// <param name="message">The message to enqueue. Must not be null.</param>
-    /// <returns>A <see cref="ValueTask"/> representing the asynchronous enqueue operation.</returns>
-    /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="message"/> is null.
-    /// </exception>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when the operation is canceled via <paramref name="cancellationToken"/>.
-    /// </exception>
-    /// <exception cref="ChannelClosedException">
-    /// Thrown when attempting to write to a closed channel (e.g., when the
-    /// actor has been stopped and its mailbox closed).
-    /// </exception>
-    /// <remarks>
-    /// For bounded channels, this method may wait if the channel is full depending on the
-    /// <see cref="BoundedChannelFullMode"/> configuration. For unbounded channels, this
-    /// operation typically completes synchronously unless the channel is closed.
-    /// </remarks>
+    /// <inheritdoc />
     public async ValueTask EnqueueAsync(
         IMessage message,
         CancellationToken cancellationToken = default
@@ -150,5 +135,33 @@ public class ChannelMailbox : IMailbox
         return _channel
             .Reader.ReadAllAsync(cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        return _channel.GetHashCode();
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj)
+    {
+        return obj is IMailbox other && Equals(other);
+    }
+
+    /// <inheritdoc />
+    public bool Equals(IMailbox? other)
+    {
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        if (other is ChannelMailbox otherChannel)
+        {
+            return _channel == otherChannel._channel;
+        }
+
+        return false;
     }
 }

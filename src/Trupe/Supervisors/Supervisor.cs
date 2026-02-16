@@ -43,6 +43,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         ISupervisor,
         IHandleActorMessage<AddActor>,
         IHandleActorMessage<ActorFailed>,
+        IHandleActorMessage<ActorTerminated>,
         IAsyncDisposable
 {
     /// <summary>
@@ -65,6 +66,12 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// Default is <see cref="Strategy.OneForOne"/>.
     /// </summary>
     protected virtual Strategy Strategy => Strategy.OneForOne;
+
+    /// <summary>
+    /// Gets the restart policy that determines how terminated child actors are handled.
+    /// Default is <see cref="RestartPolicy.Permanent"/>.
+    /// </summary>
+    protected virtual RestartPolicy Restart => RestartPolicy.Permanent;
 
     /// <summary>
     /// Gets the maximum number of restarts allowed within the <see cref="RestartWindow"/>.
@@ -101,6 +108,32 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         await OnInitializeAsync(cancellationToken);
 
         _initialized = true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Routes <see cref="AddActor"/>, <see cref="ActorFailed"/>, and <see cref="ActorTerminated"/>
+    /// messages to their respective typed handlers before falling back to the base implementation.
+    /// </remarks>
+    public override ValueTask HandleAsync(
+        object? message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (message is AddActor addActor)
+        {
+            return HandleAsync(addActor, cancellationToken);
+        }
+        else if (message is ActorFailed actorFailed)
+        {
+            return HandleAsync(actorFailed, cancellationToken);
+        }
+        else if (message is ActorTerminated actorTerminated)
+        {
+            return HandleAsync(actorTerminated, cancellationToken);
+        }
+
+        return base.HandleAsync(message, cancellationToken);
     }
 
     /// <summary>
@@ -178,6 +211,39 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             LoggerMessages.CancelAskMessage(Logger);
             escalateAskMessage.SetCanceled();
         }
+    }
+
+    /// <summary>
+    /// Handles a terminated actor message by resetting or terminating the actor
+    /// based on the current <see cref="Restart"/> policy.
+    /// </summary>
+    /// <param name="message">The actor terminated message containing termination details.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the handling operation.</returns>
+    public virtual async ValueTask HandleAsync(
+        ActorTerminated message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        LoggerMessages.ProcessingTerminatedActor(Logger, message.Reason);
+
+        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
+        if (metadata == null)
+        {
+            LoggerMessages.ActorNotFound(Logger);
+            return;
+        }
+
+        if (Restart == RestartPolicy.Permanent)
+        {
+            await ResetActorAsync(metadata);
+        }
+        else
+        {
+            metadata.Reference.Terminate(message.Reason);
+        }
+
+        LoggerMessages.FinishedProcessingTerminatedActor(Logger);
     }
 
     /// <inheritdoc />
@@ -423,6 +489,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         LoggerMessages.StoppingActor(Logger);
         metadata.Process.Failure -= HandleFailure;
+        metadata.Process.Terminate -= HandleTermination;
         await metadata.Process.StopAsync();
         LoggerMessages.ActorStopped(Logger);
     }
@@ -496,7 +563,6 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         await BeforeRestartActorAsync(metadata);
 
         await DisposeObjectAsync(metadata.Actor);
-
         await ResetMailboxAsync(metadata);
 
         LoggerMessages.CreatingNewActorInstance(Logger);
@@ -504,9 +570,12 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         metadata.Actor.Context = new ActorContext(metadata.Reference);
         LoggerMessages.ActorCreatedWithSuccess(Logger);
 
+        await metadata.Process.DisposeAsync();
         LoggerMessages.CreateNewProcess(Logger);
         metadata.Process = new ActorProcess(metadata.Actor, metadata.Mailbox);
         metadata.Process.Failure += HandleFailure;
+        metadata.Process.Terminate += HandleTermination;
+
         metadata.Process.Start(
             new LocalTellMessage(new InitializeActor()),
             new LocalTellMessage(new AfterRestartActor())
@@ -542,6 +611,16 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         LoggerMessages.HandlingFailedActor(Logger, args.Exception);
         Context.Self.Tell(new ActorFailed(args.Actor, args.Message, args.Exception));
+    }
+
+    /// <summary>
+    /// Handles termination events from child actor processes.
+    /// </summary>
+    /// <param name="sender">The source of the event.</param>
+    /// <param name="args">The termination event arguments.</param>
+    protected virtual void HandleTermination(object? sender, ActorTerminateEventArgs args)
+    {
+        Context.Self.Tell(new ActorTerminated(args.Actor, args.Reason));
     }
 
     /// <summary>
@@ -733,5 +812,17 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             Message = "Resetting restart counter for actor type '{ActorType}' after restart window elapsed"
         )]
         public static partial void ResettingActorRestartCounter(ILogger logger, Type actorType);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Processing termination ({Reason}) of child actor"
+        )]
+        public static partial void ProcessingTerminatedActor(ILogger logger, string? reason);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Finished processing termination of child actor"
+        )]
+        public static partial void FinishedProcessingTerminatedActor(ILogger logger);
     }
 }
