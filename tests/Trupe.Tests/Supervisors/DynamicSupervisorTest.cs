@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -263,6 +264,193 @@ public class DynamicSupervisorTest
         }
     }
 
+    [Test]
+    public async Task RemoveChild_Should_RemoveActorFromChildren(
+        CancellationToken cancellationToken
+    )
+    {
+        // Arrange
+        var mailbox = new ChannelMailbox();
+
+        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
+        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+
+        var process = new ActorProcess(supervisor, mailbox);
+        process.Start();
+
+        try
+        {
+            await supervisor.InitializeAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+
+            // Act - Remove a child by reference
+            supervisor.RemoveExistingChild(supervisor.Children.First());
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            // Assert
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
+        }
+        finally
+        {
+            await process.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task RemoveChildAsync_Should_RemoveActorFromChildren(
+        CancellationToken cancellationToken
+    )
+    {
+        // Arrange
+        var mailbox = new ChannelMailbox();
+
+        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
+        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+
+        var process = new ActorProcess(supervisor, mailbox);
+        process.Start();
+
+        try
+        {
+            await supervisor.InitializeAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+
+            // Act - Remove a child by reference using async method
+            await supervisor.RemoveExistingChildAsync(
+                supervisor.Children.First(),
+                cancellationToken
+            );
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            // Assert
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
+        }
+        finally
+        {
+            await process.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task RemoveChild_Should_DoNothing_When_ReferenceNotFound(
+        CancellationToken cancellationToken
+    )
+    {
+        // Arrange
+        var mailbox = new ChannelMailbox();
+
+        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
+        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+
+        var process = new ActorProcess(supervisor, mailbox);
+        process.Start();
+
+        try
+        {
+            await supervisor.InitializeAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+
+            // Act - Try to remove a non-existent reference
+            var unknownRef = new LocalActorReference(new ChannelMailbox());
+            supervisor.RemoveExistingChild(unknownRef);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            // Assert - children count should remain unchanged
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+        }
+        finally
+        {
+            await process.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task RemoveChildAsync_Should_DoNothing_When_ReferenceNotFound(
+        CancellationToken cancellationToken
+    )
+    {
+        // Arrange
+        var mailbox = new ChannelMailbox();
+
+        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
+        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+
+        var process = new ActorProcess(supervisor, mailbox);
+        process.Start();
+
+        try
+        {
+            await supervisor.InitializeAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+
+            // Act - Try to remove a non-existent reference using async method
+            var unknownRef = new LocalActorReference(new ChannelMailbox());
+            await supervisor.RemoveExistingChildAsync(unknownRef, cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            // Assert - children count should remain unchanged
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+        }
+        finally
+        {
+            await process.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task HandleActorTerminated_Should_RemoveActor_When_RestartPolicyIsTransient(
+        CancellationToken cancellationToken
+    )
+    {
+        // Arrange
+        var mailbox = new ChannelMailbox();
+
+        var supervisor = new TransientDynamicSupervisor(new ActorFactory());
+        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+
+        var process = new ActorProcess(supervisor, mailbox);
+        process.Start();
+
+        try
+        {
+            await supervisor.InitializeAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+
+            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
+
+            // Act - Cause an actor to fail, which triggers termination under Transient policy
+            var firstChild = supervisor.Children.First();
+            await Assert.ThrowsAsync<Exception>(async () =>
+                await firstChild.AskAsync<RaiseException, object>(
+                    new RaiseException(),
+                    cancellationToken: cancellationToken
+                )
+            );
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+
+            // Assert - The terminated actor should be removed under Transient policy
+            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
+        }
+        finally
+        {
+            await process.StopAsync();
+        }
+    }
+
     public class SimpleDynamicSupervisor(IActorFactory actorFactory)
         : DynamicSupervisor(actorFactory, new NullLogger<SimpleDynamicSupervisor>())
     {
@@ -294,6 +482,39 @@ public class DynamicSupervisorTest
             where TActor : IActor
         {
             return AddChildAsync<TActor>(cancellationToken);
+        }
+
+        public void RemoveExistingChild(IActorReference reference)
+        {
+            RemoveActor(reference);
+        }
+
+        public ValueTask RemoveExistingChildAsync(
+            IActorReference reference,
+            CancellationToken cancellationToken = default
+        )
+        {
+            return RemoveActorAsync(reference, cancellationToken);
+        }
+    }
+
+    public class TransientDynamicSupervisor(IActorFactory actorFactory)
+        : DynamicSupervisor(actorFactory, new NullLogger<TransientDynamicSupervisor>())
+    {
+        protected override RestartPolicy Restart => RestartPolicy.Transient;
+
+        protected override async ValueTask OnInitializeAsync(
+            CancellationToken cancellationToken = default
+        )
+        {
+            if (RuntimeFeature.IsDynamicCodeSupported)
+            {
+                await AddChildAsync<TypedActor>(cancellationToken);
+                await AddChildAsync(typeof(TypedActor), cancellationToken);
+            }
+
+            await AddChildAsync<SimpleUntypedActor>(cancellationToken);
+            await AddChildAsync(typeof(SimpleUntypedActor), cancellationToken);
         }
     }
 

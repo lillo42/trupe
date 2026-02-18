@@ -27,7 +27,7 @@ namespace Trupe;
 /// <example>
 /// Basic actor implementation with type-safe handlers:
 /// <code>
-/// public class CalculatorActor : Actor, IHandleActorMessage<AddNumbers>
+/// public class CalculatorActor : Actor, IHandleActorMessage&lt;AddNumbers&gt;
 /// {
 ///     private int _total = 0;
 ///
@@ -123,7 +123,7 @@ public abstract class Actor : IActor
     /// This method is called as a fallback when:
     /// 1. The actor doesn't implement <see cref="IHandleActorMessage{TMessage}"/> for the specific message type
     /// 2. No matching strongly-typed handler is found for the incoming message
-    /// 
+    ///
     /// The default implementation throws <see cref="UnhandleMessageException"/>. Override this method
     /// to provide custom handling for untyped messages or to implement a catch-all message handler.
     /// </remarks>

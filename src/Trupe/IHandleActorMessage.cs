@@ -29,9 +29,9 @@ namespace Trupe;
 /// to handle different message types:
 /// <code>
 /// public class UserActor : Actor,
-///     IHandleActorMessage<CreateUser>,
-///     IHandleActorMessage<UpdateUser>,
-///     IHandleActorMessage<DeleteUser>
+///     IHandleActorMessage&lt;CreateUser&gt;,
+///     IHandleActorMessage&lt;UpdateUser&gt;,
+///     IHandleActorMessage&lt;DeleteUser&gt;
 /// {
 ///     // Implement each handler separately
 ///     public ValueTask HandleAsync(CreateUser message, CancellationToken cancellationToken) { ... }

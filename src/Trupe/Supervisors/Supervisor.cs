@@ -320,6 +320,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A reference to the newly created child actor.</returns>
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
+    /// </exception>
     protected virtual IActorReference AddChild(Type actorType, IMailbox mailbox)
     {
         if (_initialized)

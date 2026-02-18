@@ -8,7 +8,7 @@ namespace Trupe.Exceptions;
 /// typically occurring when:
 /// - The actor doesn't implement the appropriate <see cref="IHandleActorMessage{TMessage}"/> interface for the message type
 /// - No matching message handler method is found for the incoming message
-/// - The actor's fallback <see cref="IActor.Handle(object?, CancellationToken)"/> method is called but not overridden
+/// - The actor's fallback <see cref="IActor.HandleAsync(object?, System.Threading.CancellationToken)"/> method is called but not overridden
 ///
 /// This exception helps identify unhandled message scenarios during development and debugging
 /// of actor-based systems, making it easier to understand message flow and handler registration issues.
