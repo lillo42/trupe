@@ -6,21 +6,19 @@ using Trupe.Mailboxes;
 namespace Trupe.Supervisors;
 
 /// <summary>
-/// Contains metadata and runtime state for a supervised actor instance.
+/// Represents the metadata and state of a child actor managed by a supervisor.
 /// </summary>
-/// <remarks>
-/// This class tracks all information needed by a supervisor to manage an actor's lifecycle,
-/// including restart counts, timing, and the actor's runtime components.
-/// </remarks>
-/// <param name="actor">The actor instance being supervised.</param>
-/// <param name="mailbox">The mailbox used for message delivery to the actor.</param>
-/// <param name="process">The process managing the actor's message loop.</param>
-/// <param name="reference">The reference used to communicate with this actor.</param>
-public class ActorMetadata(
+/// <param name="actor">The actor instance.</param>
+/// <param name="mailbox">The mailbox used for message delivery.</param>
+/// <param name="process">The actor process managing the message loop.</param>
+/// <param name="reference">The local actor reference for communication.</param>
+/// <param name="restartPolicy">The restart policy for this child actor.</param>
+public class Child(
     IActor actor,
     IMailbox mailbox,
     ActorProcess process,
-    LocalActorReference reference
+    LocalActorReference reference,
+    RestartPolicy restartPolicy
 )
 {
     /// <summary>
@@ -42,6 +40,11 @@ public class ActorMetadata(
     /// Gets the actor reference used to communicate with this actor.
     /// </summary>
     public LocalActorReference Reference { get; } = reference;
+
+    /// <summary>
+    /// Gets the restart policy that determines how this actor is handled after termination or failure.
+    /// </summary>
+    public RestartPolicy RestartPolicy { get; } = restartPolicy;
 
     /// <summary>
     /// Gets the original type of the actor, used for recreation during restart.

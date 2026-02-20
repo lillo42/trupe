@@ -66,6 +66,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     public event EventHandler<ActorTerminateEventArgs>? Terminate;
 
     /// <summary>
+    /// Gets a value indicating whether the actor's message processing loop is currently running.
+    /// </summary>
+    public bool IsRunning => _executing != null && !_executing.IsCompleted;
+
+    /// <summary>
     /// Starts the actor's message processing loop.
     /// </summary>
     /// <param name="messages">

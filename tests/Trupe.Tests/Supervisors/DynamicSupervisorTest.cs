@@ -1,597 +1,726 @@
 using System;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
 using Trupe.ActorReferences;
 using Trupe.Factories;
 using Trupe.Mailboxes;
+using Trupe.Messages;
 using Trupe.Supervisors;
+using Trupe.Supervisors.Commands;
 
 namespace Trupe.Tests.Supervisors;
 
 public class DynamicSupervisorTest
 {
-    [Test]
-    public async Task ChildrenCount_Should_BeCorrectlyAfterInitialization(
-        CancellationToken cancellationToken
-    )
+    #region Test Helpers
+
+    private class TestDynamicSupervisor : DynamicSupervisor
     {
-        // Arrange
-        var mailbox = new ChannelMailbox();
+        private readonly Func<CancellationToken, ValueTask>? _onInitialize;
 
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
+        public TestDynamicSupervisor(
+            IActorFactory actorFactory,
+            ILogger logger,
+            Func<CancellationToken, ValueTask>? onInitialize = null
+        )
+            : base(actorFactory, logger)
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert
-                .That(supervisor.Children)
-                .Count()
-                .IsEqualTo(RuntimeFeature.IsDynamicCodeSupported ? 4 : 2);
+            _onInitialize = onInitialize;
         }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
 
-    [Test]
-    public async Task Strategy_Should_BeOneForOne(CancellationToken cancellationToken)
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        // Assert - DynamicSupervisor always uses OneForOne strategy
-        await Assert.That(supervisor.GetStrategy()).IsEqualTo(Strategy.OneForOne);
-    }
-
-    [Test]
-    public async Task AddChild_Should_AddActorAfterInitialization(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Add a new child after initialization
-            supervisor.AddNewChild<SimpleUntypedActor>();
-
-            // Ensure the new child is added
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount + 1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task AddChildAsync_Should_AddActorAfterInitialization(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Add a new child after initialization using async method
-            await supervisor.AddNewChildAsync<SimpleUntypedActor>(cancellationToken);
-
-            // Ensure the new child is added
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount + 1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task Children_Should_ProcessMessagesCorrectly(CancellationToken cancellationToken)
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert
-            foreach (var child in supervisor.Children)
-            {
-                var response = await child.AskAsync<SetMessage, string>(
-                    new SetMessage("hello"),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.That(response).IsEqualTo("HELLO");
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task Children_Should_RestartWithOneForOneStrategy_When_ActorThrowException(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert - DynamicSupervisor always uses OneForOne strategy
-            foreach (var child in supervisor.Children)
-            {
-                var message = Uuid.NewUuid().ToString();
-                await child.AskAsync<SetMessage, string>(
-                    new SetMessage(message),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.ThrowsAsync<Exception>(async () =>
-                    await child.AskAsync<RaiseException, object>(
-                        new RaiseException(),
-                        cancellationToken: cancellationToken
-                    )
-                );
-
-                var response = await child.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cancellationToken
-                );
-                await Assert.That(response).IsEqualTo(string.Empty);
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task DynamicallyAddedChild_Should_ProcessMessages(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Add a new child after initialization
-            var newChild = supervisor.AddNewChild<SimpleUntypedActor>();
-
-            // Ensure the new child is added and started
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert - the new child should be able to process messages
-            var response = await newChild.AskAsync<SetMessage, string>(
-                new SetMessage("dynamic"),
-                cancellationToken: cancellationToken
-            );
-
-            await Assert.That(response).IsEqualTo("DYNAMIC");
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task RemoveChild_Should_RemoveActorFromChildren(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Remove a child by reference
-            supervisor.RemoveExistingChild(supervisor.Children.First());
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task RemoveChildAsync_Should_RemoveActorFromChildren(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Remove a child by reference using async method
-            await supervisor.RemoveExistingChildAsync(
-                supervisor.Children.First(),
-                cancellationToken
-            );
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task RemoveChild_Should_DoNothing_When_ReferenceNotFound(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Try to remove a non-existent reference
-            var unknownRef = new LocalActorReference(new ChannelMailbox());
-            supervisor.RemoveExistingChild(unknownRef);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert - children count should remain unchanged
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task RemoveChildAsync_Should_DoNothing_When_ReferenceNotFound(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new SimpleDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Try to remove a non-existent reference using async method
-            var unknownRef = new LocalActorReference(new ChannelMailbox());
-            await supervisor.RemoveExistingChildAsync(unknownRef, cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert - children count should remain unchanged
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task HandleActorTerminated_Should_RemoveActor_When_RestartPolicyIsTransient(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-
-        var supervisor = new TransientDynamicSupervisor(new ActorFactory());
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var initialCount = RuntimeFeature.IsDynamicCodeSupported ? 4 : 2;
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount);
-
-            // Act - Cause an actor to fail, which triggers termination under Transient policy
-            var firstChild = supervisor.Children.First();
-            await Assert.ThrowsAsync<Exception>(async () =>
-                await firstChild.AskAsync<RaiseException, object>(
-                    new RaiseException(),
-                    cancellationToken: cancellationToken
-                )
-            );
-
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-
-            // Assert - The terminated actor should be removed under Transient policy
-            await Assert.That(supervisor.Children).Count().IsEqualTo(initialCount - 1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    public class SimpleDynamicSupervisor(IActorFactory actorFactory)
-        : DynamicSupervisor(actorFactory, new NullLogger<SimpleDynamicSupervisor>())
-    {
-        public Strategy GetStrategy() => Strategy;
-
-        protected override async ValueTask OnInitializeAsync(
+        protected override ValueTask OnInitializeAsync(
             CancellationToken cancellationToken = default
         )
         {
-            if (RuntimeFeature.IsDynamicCodeSupported)
-            {
-                await AddChildAsync<TypedActor>(cancellationToken);
-                await AddChildAsync(typeof(TypedActor), cancellationToken);
-            }
-
-            await AddChildAsync<SimpleUntypedActor>(cancellationToken);
-            await AddChildAsync(typeof(SimpleUntypedActor), cancellationToken);
+            if (_onInitialize != null)
+                return _onInitialize(cancellationToken);
+            return ValueTask.CompletedTask;
         }
 
-        public IActorReference AddNewChild<TActor>()
-            where TActor : IActor
+        public Strategy TestableStrategy => Strategy;
+
+        public new ImmutableList<Child> Children
         {
-            return AddChild<TActor>();
+            get => base.Children;
+            set => base.Children = value;
         }
 
-        public ValueTask<IActorReference> AddNewChildAsync<TActor>(
+        public new IActorReference AddChild(ChildSpecification specification) =>
+            base.AddChild(specification);
+
+        public new IActorReference AddChild(Type actorType) => base.AddChild(actorType);
+
+        public new ValueTask<IActorReference> AddChildAsync(
+            ChildSpecification specification,
             CancellationToken cancellationToken = default
-        )
-            where TActor : IActor
-        {
-            return AddChildAsync<TActor>(cancellationToken);
-        }
+        ) => base.AddChildAsync(specification, cancellationToken);
 
-        public void RemoveExistingChild(IActorReference reference)
-        {
-            RemoveActor(reference);
-        }
+        public new ValueTask<IActorReference> AddChildAsync(
+            Type actorType,
+            CancellationToken cancellationToken = default
+        ) => base.AddChildAsync(actorType, cancellationToken);
 
-        public ValueTask RemoveExistingChildAsync(
+        public new Child CreateActor(
+            ChildSpecification specification,
+            LocalActorReference reference
+        ) => base.CreateActor(specification, reference);
+
+        public new void RemoveActor(IActorReference reference) => base.RemoveActor(reference);
+
+        public new ValueTask RemoveActorAsync(
             IActorReference reference,
             CancellationToken cancellationToken = default
-        )
-        {
-            return RemoveActorAsync(reference, cancellationToken);
-        }
+        ) => base.RemoveActorAsync(reference, cancellationToken);
     }
 
-    public class TransientDynamicSupervisor(IActorFactory actorFactory)
-        : DynamicSupervisor(actorFactory, new NullLogger<TransientDynamicSupervisor>())
+    private class SimpleActor : Actor
     {
-        protected override RestartPolicy Restart => RestartPolicy.Transient;
+        public bool Initialized { get; set; }
 
-        protected override async ValueTask OnInitializeAsync(
-            CancellationToken cancellationToken = default
-        )
+        public override ValueTask InitializeAsync(CancellationToken cancellationToken = default)
         {
-            if (RuntimeFeature.IsDynamicCodeSupported)
-            {
-                await AddChildAsync<TypedActor>(cancellationToken);
-                await AddChildAsync(typeof(TypedActor), cancellationToken);
-            }
-
-            await AddChildAsync<SimpleUntypedActor>(cancellationToken);
-            await AddChildAsync(typeof(SimpleUntypedActor), cancellationToken);
-        }
-    }
-
-    public class TypedActor
-        : Actor,
-            IHandleActorMessage<SetMessage>,
-            IHandleActorMessage<GetState>,
-            IHandleActorMessage<RaiseException>
-    {
-        private string _state = string.Empty;
-
-        public ValueTask HandleAsync(
-            SetMessage message,
-            CancellationToken cancellationToken = default
-        )
-        {
-            _state = message.Content.ToUpper();
-            Context.Response = _state;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask HandleAsync(
-            GetState message,
-            CancellationToken cancellationToken = default
-        )
-        {
-            Context.Response = _state;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask HandleAsync(
-            RaiseException message,
-            CancellationToken cancellationToken = default
-        )
-        {
-            throw new Exception();
-        }
-    }
-
-    public class SimpleUntypedActor : Actor
-    {
-        private string _state = string.Empty;
-
-        public override ValueTask HandleAsync(
-            object? message,
-            CancellationToken cancellationToken = default
-        )
-        {
-            if (message is SetMessage simpleMessage)
-            {
-                _state = simpleMessage.Content.ToUpper();
-                Context.Response = _state;
-            }
-            else if (message is GetState)
-            {
-                Context.Response = _state;
-            }
-            else if (message is RaiseException)
-            {
-                throw new Exception();
-            }
-
+            Initialized = true;
             return ValueTask.CompletedTask;
         }
     }
 
-    public record SetMessage(string Content);
-
-    public record GetState();
-
-    public record RaiseException();
-
-    public class ActorFactory : IActorFactory
+    private class DisposableActor : Actor, IAsyncDisposable
     {
-        public IActor CreateActor(Type actorType)
+        public bool AsyncDisposed { get; set; }
+
+        public ValueTask DisposeAsync()
         {
-            return (IActor)Activator.CreateInstance(actorType)!;
+            AsyncDisposed = true;
+            return ValueTask.CompletedTask;
         }
     }
+
+    private static TestDynamicSupervisor CreateSupervisor(
+        IActorFactory? factory = null,
+        ChannelMailbox? selfMailbox = null,
+        Func<CancellationToken, ValueTask>? onInitialize = null
+    )
+    {
+        factory ??= Substitute.For<IActorFactory>();
+        var logger = Substitute.For<ILogger>();
+        var supervisor = new TestDynamicSupervisor(factory, logger, onInitialize);
+        selfMailbox ??= new ChannelMailbox();
+        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox));
+        return supervisor;
+    }
+
+    private static IActorFactory CreateFactory<TActor>()
+        where TActor : Actor, new()
+    {
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new TActor());
+        return factory;
+    }
+
+    #endregion
+
+    #region §1 Strategy
+
+    [Test]
+    public async Task Strategy_Should_AlwaysBeOneForOne()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor();
+
+        // Assert
+        await Assert.That(supervisor.TestableStrategy).IsEqualTo(Strategy.OneForOne);
+    }
+
+    #endregion
+
+    #region §2 HandleAsync(RemoveChild)
+
+    [Test]
+    public async Task HandleRemoveChild_Should_RemoveFromChildren_StopDispose_NullRefs()
+    {
+        // Arrange
+        var factory = CreateFactory<DisposableActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox },
+            reference
+        );
+        var child = supervisor.Children[0];
+        var actor = (DisposableActor)child.Actor;
+        var actorToRemove = child.Actor;
+
+        // Act
+        await supervisor.HandleAsync(new RemoveChild(actorToRemove));
+
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+        await Assert.That(actor.AsyncDisposed).IsTrue();
+        await Assert.That(child.Actor).IsNull();
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task HandleRemoveChild_Should_StopRunningProcess()
+    {
+        // Arrange
+        var factory = CreateFactory<SimpleActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
+            reference
+        );
+        var child = supervisor.Children[0];
+        await Task.Delay(50);
+        await Assert.That(child.Process.IsRunning).IsTrue();
+
+        var actorToRemove = child.Actor;
+
+        // Act
+        await supervisor.HandleAsync(new RemoveChild(actorToRemove));
+
+        // Assert — process stopped and nulled
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task HandleRemoveChild_UnknownActor_Should_NoOp()
+    {
+        // Arrange
+        var factory = CreateFactory<SimpleActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
+            new LocalActorReference(mailbox)
+        );
+
+        // Act — remove an actor that's not a child
+        await supervisor.HandleAsync(new RemoveChild(new SimpleActor()));
+
+        // Assert — children unchanged
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task HandleRemoveChild_NullActor_Should_NoOp()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor();
+
+        // Act & Assert — should not throw
+        await supervisor.HandleAsync(new RemoveChild(null));
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+    }
+
+    #endregion
+
+    #region §3 AddChild Override
+
+    [Test]
+    public async Task AddChild_WithSpec_Should_ReturnLocalActorReference()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor();
+        var spec = new ChildSpecification(typeof(SimpleActor));
+
+        // Act
+        var actorRef = supervisor.AddChild(spec);
+
+        // Assert
+        await Assert.That(actorRef).IsNotNull();
+        await Assert.That(actorRef).IsTypeOf<LocalActorReference>();
+    }
+
+    [Test]
+    public async Task AddChild_WithSpec_Should_SendAddActorToSelf()
+    {
+        // Arrange
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+        var spec = new ChildSpecification(typeof(SimpleActor));
+
+        // Act
+        supervisor.AddChild(spec);
+
+        // Assert — verify AddActor message was enqueued to self
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
+            var addActor = (AddActor)msg.Payload;
+            await Assert.That(addActor.Specification).IsSameReferenceAs(spec);
+            break;
+        }
+    }
+
+    [Test]
+    public async Task AddChild_WithType_Should_SendAddActorToSelf()
+    {
+        // Arrange
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+
+        // Act
+        supervisor.AddChild(typeof(SimpleActor));
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
+            var addActor = (AddActor)msg.Payload;
+            await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
+            break;
+        }
+    }
+
+    [Test]
+    public async Task AddChild_Should_WorkAfterInitialization()
+    {
+        // Arrange — DynamicSupervisor allows adding children after init
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+        await supervisor.InitializeAsync();
+
+        // Act — should NOT throw (unlike base Supervisor)
+        var actorRef = supervisor.AddChild(new ChildSpecification(typeof(SimpleActor)));
+
+        // Assert
+        await Assert.That(actorRef).IsNotNull();
+    }
+
+    #endregion
+
+    #region §4 AddChildAsync Override
+
+    [Test]
+    public async Task AddChildAsync_WithSpec_Should_ReturnLocalActorReference()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor();
+        var spec = new ChildSpecification(typeof(SimpleActor));
+
+        // Act
+        var actorRef = await supervisor.AddChildAsync(spec);
+
+        // Assert
+        await Assert.That(actorRef).IsNotNull();
+        await Assert.That(actorRef).IsTypeOf<LocalActorReference>();
+    }
+
+    [Test]
+    public async Task AddChildAsync_WithSpec_Should_SendAddActorToSelf()
+    {
+        // Arrange
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+        var spec = new ChildSpecification(typeof(SimpleActor));
+
+        // Act
+        await supervisor.AddChildAsync(spec);
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
+            break;
+        }
+    }
+
+    [Test]
+    public async Task AddChildAsync_WithType_Should_SendAddActorToSelf()
+    {
+        // Arrange
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+
+        // Act
+        await supervisor.AddChildAsync(typeof(SimpleActor));
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
+            var addActor = (AddActor)msg.Payload;
+            await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
+            break;
+        }
+    }
+
+    #endregion
+
+    #region §5 OnActorFailedAsync Override
+
+    [Test]
+    public async Task OnActorFailed_TemporaryActor_Should_RemoveFromChildren_DisposeAndNull()
+    {
+        // Arrange
+        var factory = CreateFactory<DisposableActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(DisposableActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Temporary,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+        var actor = (DisposableActor)child.Actor;
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert — removed from children, actor disposed, refs nulled
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+        await Assert.That(actor.AsyncDisposed).IsTrue();
+        await Assert.That(child.Actor).IsNull();
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task OnActorFailed_PermanentActor_Should_NotRemoveFromChildren()
+    {
+        // Arrange
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Permanent,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert — still in children (restarted by base)
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task OnActorFailed_TransientActor_Should_NotRemoveFromChildren()
+    {
+        // Arrange
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Transient,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert — still in children (restarted by base)
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+    }
+
+    #endregion
+
+    #region §6 OnActorTerminatedAsync Override
+
+    [Test]
+    public async Task OnActorTerminated_TransientActor_Should_RemoveFromChildren_DisposeAndNull()
+    {
+        // Arrange
+        var factory = CreateFactory<DisposableActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(DisposableActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Transient,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+        var actor = (DisposableActor)child.Actor;
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
+        );
+
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+        await Assert.That(actor.AsyncDisposed).IsTrue();
+        await Assert.That(child.Actor).IsNull();
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task OnActorTerminated_TemporaryActor_Should_RemoveFromChildren_DisposeAndNull()
+    {
+        // Arrange
+        var factory = CreateFactory<DisposableActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(DisposableActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Temporary,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+        var actor = (DisposableActor)child.Actor;
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
+        );
+
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+        await Assert.That(actor.AsyncDisposed).IsTrue();
+        await Assert.That(child.Actor).IsNull();
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task OnActorTerminated_PermanentActor_Should_NotRemoveFromChildren()
+    {
+        // Arrange
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor))
+            {
+                Mailbox = mailbox,
+                RestartPolicy = RestartPolicy.Permanent,
+            },
+            reference
+        );
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
+        );
+
+        // Assert — still in children (restarted by base)
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+    }
+
+    #endregion
+
+    #region §7 RemoveActor
+
+    [Test]
+    public async Task RemoveActor_Should_SendRemoveChildToSelf()
+    {
+        // Arrange
+        var factory = CreateFactory<SimpleActor>();
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(factory: factory, selfMailbox: selfMailbox);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
+            reference
+        );
+        var child = supervisor.Children[0];
+
+        // Act
+        supervisor.RemoveActor(reference);
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<RemoveChild>();
+            var removeChild = (RemoveChild)msg.Payload;
+            await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
+            break;
+        }
+    }
+
+    [Test]
+    public async Task RemoveActor_UnknownReference_Should_NoOp()
+    {
+        // Arrange
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
+        var unknownRef = new LocalActorReference(new ChannelMailbox());
+
+        // Act
+        supervisor.RemoveActor(unknownRef);
+
+        // Assert — no message sent to self
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        var messageReceived = false;
+        try
+        {
+            await foreach (var _ in selfMailbox.WithCancellation(cts.Token))
+            {
+                messageReceived = true;
+                break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected — no message was sent
+        }
+
+        await Assert.That(messageReceived).IsFalse();
+    }
+
+    #endregion
+
+    #region §8 RemoveActorAsync
+
+    [Test]
+    public async Task RemoveActorAsync_Should_SendRemoveChildToSelf()
+    {
+        // Arrange
+        var factory = CreateFactory<SimpleActor>();
+        var selfMailbox = new ChannelMailbox();
+        var supervisor = CreateSupervisor(factory: factory, selfMailbox: selfMailbox);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
+            reference
+        );
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.RemoveActorAsync(reference);
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
+        {
+            await Assert.That(msg.Payload).IsTypeOf<RemoveChild>();
+            var removeChild = (RemoveChild)msg.Payload;
+            await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
+            break;
+        }
+    }
+
+    [Test]
+    public async Task RemoveActorAsync_UnknownReference_Should_ReturnCompleted()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor();
+        var unknownRef = new LocalActorReference(new ChannelMailbox());
+
+        // Act & Assert — should complete without throwing
+        await supervisor.RemoveActorAsync(unknownRef);
+    }
+
+    #endregion
+
+    #region §9 Integration
+
+    [Test]
+    public async Task Integration_RemoveChild_Should_FullyCleanupRunningActor()
+    {
+        // Arrange
+        var factory = CreateFactory<DisposableActor>();
+        var supervisor = CreateSupervisor(factory: factory);
+        var mailbox = new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox },
+            reference
+        );
+        var child = supervisor.Children[0];
+        var actor = (DisposableActor)child.Actor;
+        await Task.Delay(50);
+        await Assert.That(child.Process.IsRunning).IsTrue();
+
+        // Act
+        await supervisor.HandleAsync(new RemoveChild(child.Actor));
+
+        // Assert — fully cleaned up
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+        await Assert.That(actor.AsyncDisposed).IsTrue();
+        await Assert.That(child.Actor).IsNull();
+        await Assert.That(child.Process).IsNull();
+    }
+
+    [Test]
+    public async Task Integration_RemoveOneChild_Should_NotAffectOthers()
+    {
+        // Arrange
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
+        var supervisor = CreateSupervisor(factory: factory);
+
+        var mailbox1 = new ChannelMailbox();
+        var mailbox2 = new ChannelMailbox();
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
+            new LocalActorReference(mailbox1)
+        );
+        supervisor.CreateActor(
+            new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
+            new LocalActorReference(mailbox2)
+        );
+
+        var childToRemove = supervisor.Children[0];
+        var childToKeep = supervisor.Children[1];
+
+        // Act
+        await supervisor.HandleAsync(new RemoveChild(childToRemove.Actor));
+
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+        await Assert.That(supervisor.Children[0]).IsSameReferenceAs(childToKeep);
+        await Assert.That(childToKeep.Process.IsRunning).IsTrue();
+    }
+
+    #endregion
 }

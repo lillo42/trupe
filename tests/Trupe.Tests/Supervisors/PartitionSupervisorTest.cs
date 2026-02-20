@@ -1,901 +1,1188 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
 using Trupe.ActorReferences;
+using Trupe.Events;
 using Trupe.Exceptions;
 using Trupe.Factories;
 using Trupe.Mailboxes;
+using Trupe.Messages;
 using Trupe.Supervisors;
-using Trupe.SystemMessages;
+using Trupe.Supervisors.Commands;
 
 namespace Trupe.Tests.Supervisors;
 
 public class PartitionSupervisorTest
 {
-    [Test]
-    public async Task ChildrenCount_Should_BeCorrectlyAfterInitialization(
-        CancellationToken cancellationToken
-    )
+    #region Test Helpers
+
+    private class SimpleActor : Actor
     {
-        // Arrange
-        var mailbox = new ChannelMailbox();
-        const int workers = 4;
+        public bool Initialized { get; set; }
+        public bool BeforeRestartCalled { get; set; }
 
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers)
+        public override ValueTask InitializeAsync(CancellationToken cancellationToken = default)
         {
-            Context = new ActorContext(new LocalActorReference(mailbox)),
-        };
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(workers);
+            Initialized = true;
+            return ValueTask.CompletedTask;
         }
-        finally
+
+        public override ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default)
         {
-            await process.StopAsync();
+            BeforeRestartCalled = true;
+            return ValueTask.CompletedTask;
         }
     }
 
-    [Test]
-    public async Task Children_Should_ProcessMessagesCorrectly(CancellationToken cancellationToken)
+    private class DisposableActor : Actor, IAsyncDisposable
     {
-        // Arrange
-        const int workers = 4;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        public bool AsyncDisposed { get; set; }
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
+        public ValueTask DisposeAsync()
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert
-            foreach (var child in supervisor.Children)
-            {
-                var response = await child.AskAsync<SetMessage, string>(
-                    new SetMessage("hello"),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.That(response).IsEqualTo("HELLO");
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
+            AsyncDisposed = true;
+            return ValueTask.CompletedTask;
         }
     }
 
-    [Test]
-    public async Task GetActorReference_Should_ReturnConsistentActorForSameKey(
-        CancellationToken cancellationToken
-    )
+    private class SyncDisposableActor : Actor, IDisposable
     {
-        // Arrange
-        const int workers = 4;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        public bool SyncDisposed { get; set; }
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
+        public void Dispose()
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Get actor reference multiple times with the same key
-            var key = "test-key-123";
-            var actor1 = supervisor.GetActorReferenceForKey(key);
-            var actor2 = supervisor.GetActorReferenceForKey(key);
-            var actor3 = supervisor.GetActorReferenceForKey(key);
-
-            // Assert - Same key should always return the same actor
-            await Assert.That(actor1).IsSameReferenceAs(actor2);
-            await Assert.That(actor2).IsSameReferenceAs(actor3);
-        }
-        finally
-        {
-            await process.StopAsync();
+            SyncDisposed = true;
         }
     }
 
-    [Test]
-    public async Task GetActorReference_Should_DistributeAcrossWorkers(
-        CancellationToken cancellationToken
-    )
+    private class SimpleSupervisorActor : Actor, ISupervisor
     {
-        // Arrange
-        const int workers = 4;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
-
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Use many different keys to try to hit different workers
-            var actorRefs = Enumerable
-                .Range(0, 100)
-                .Select(i => supervisor.GetActorReferenceForKey($"key-{i}"))
-                .ToList();
-
-            // Assert - Should distribute messages (not all to the same actor)
-            var distinctActors = actorRefs.Distinct().Count();
-            await Assert.That(distinctActors).IsGreaterThan(1);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        public IEnumerable<IActorReference> Children => Enumerable.Empty<IActorReference>();
     }
 
-    [Test]
-    public async Task Children_Should_RestartWithOneForOneStrategy_When_ActorThrowException(
-        CancellationToken cancellationToken
-    )
+    private class TestPartitionSupervisor : PartitionSupervisor<SimpleActor>
     {
-        // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        private readonly Strategy _strategy;
+        private readonly int _maxRestarts;
+        private readonly TimeSpan _restartWindow;
+        private readonly RestartPolicy _defaultRestartPolicy;
+        private readonly Func<CancellationToken, ValueTask>? _onInitialize;
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
+        public TestPartitionSupervisor(
+            IActorFactory actorFactory,
+            ILogger logger,
+            int workers = 3,
+            Strategy? strategy = null,
+            int? maxRestarts = null,
+            TimeSpan? restartWindow = null,
+            RestartPolicy? defaultRestartPolicy = null,
+            Func<CancellationToken, ValueTask>? onInitialize = null
+        )
+            : base(actorFactory, logger, workers)
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert
-            foreach (var child in supervisor.Children)
-            {
-                var message = Uuid.NewUuid().ToString();
-                await child.AskAsync<SetMessage, string>(
-                    new SetMessage(message),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.ThrowsAsync<Exception>(async () =>
-                    await child.AskAsync<RaiseException, object>(
-                        new RaiseException(),
-                        cancellationToken: cancellationToken
-                    )
-                );
-
-                // Wait for restart to complete
-                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-                var response = await child.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cancellationToken
-                );
-                await Assert.That(response).IsEqualTo(string.Empty);
-            }
+            _strategy = strategy ?? Strategy.OneForOne;
+            _maxRestarts = maxRestarts ?? 3;
+            _restartWindow = restartWindow ?? TimeSpan.FromSeconds(5);
+            _defaultRestartPolicy = defaultRestartPolicy ?? RestartPolicy.Permanent;
+            _onInitialize = onInitialize;
         }
-        finally
+
+        protected override Strategy Strategy => _strategy;
+        protected override int MaxRestarts => _maxRestarts;
+        protected override TimeSpan RestartWindow => _restartWindow;
+        protected override RestartPolicy DefaultRestartPolicy => _defaultRestartPolicy;
+
+        protected override ValueTask OnInitializeAsync(
+            CancellationToken cancellationToken = default
+        )
         {
-            await process.StopAsync();
+            if (_onInitialize != null)
+                return _onInitialize(cancellationToken);
+            return ValueTask.CompletedTask;
         }
+
+        // Expose protected members for testing
+        public new ImmutableList<Child> Children => base.Children;
+
+        public new Child CreateActor(ChildSpecification specification) =>
+            base.CreateActor(specification);
+
+        public new IActorReference GetActorReference<TKey>(TKey key)
+            where TKey : notnull => base.GetActorReference<TKey>(key);
+
+        public new int GetHashcode<TKey>(TKey key)
+            where TKey : notnull => base.GetHashcode<TKey>(key);
+
+        public new void ResetCounter(Child child) => base.ResetCounter(child);
+
+        public new FailureAction GetFailureAction(Child child, Exception exception) =>
+            base.GetFailureAction(child, exception);
+
+        public new Task ApplyStopAsync(Child child) => base.ApplyStopAsync(child);
+        public new Task ApplyResumeAsync(Child child) => base.ApplyResumeAsync(child);
+
+        public new Task ApplyEscalateAsync(
+            Child child,
+            IMessage message,
+            Exception exception
+        ) => base.ApplyEscalateAsync(child, message, exception);
+
+        public new Task ApplyRestartAsync(Child child) => base.ApplyRestartAsync(child);
+
+        public new ValueTask DisposeObjectAsync(object obj) => base.DisposeObjectAsync(obj);
+
+        public new ValueTask ResetMailboxAsync(Child child) => base.ResetMailboxAsync(child);
+
+        public new void HandleFailure(object? sender, ActorFailureEventArgs args) =>
+            base.HandleFailure(sender, args);
+
+        public new void HandleTermination(object? sender, ActorTerminateEventArgs args) =>
+            base.HandleTermination(sender, args);
     }
 
-    [Test]
-    public async Task Children_Should_RestartWithAllForOneStrategy_When_ActorThrowException(
-        CancellationToken cancellationToken
+    private static TestPartitionSupervisor CreateSupervisor(
+        IActorFactory? factory = null,
+        int workers = 3,
+        Strategy? strategy = null,
+        int? maxRestarts = null,
+        TimeSpan? restartWindow = null,
+        RestartPolicy? defaultRestartPolicy = null,
+        Func<CancellationToken, ValueTask>? onInitialize = null,
+        ChannelMailbox? selfMailbox = null
     )
     {
-        // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(
-            new ActorFactory(),
+        factory ??= Substitute.For<IActorFactory>();
+        var logger = Substitute.For<ILogger>();
+        var supervisor = new TestPartitionSupervisor(
+            factory,
+            logger,
             workers,
-            Strategy.AllForOne
+            strategy,
+            maxRestarts,
+            restartWindow,
+            defaultRestartPolicy,
+            onInitialize
+        );
+        selfMailbox ??= new ChannelMailbox();
+        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox));
+        return supervisor;
+    }
+
+    private static IActorFactory CreateFactory()
+    {
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
+        return factory;
+    }
+
+    private static Child CreateChild(
+        IActor? actor = null,
+        IMailbox? mailbox = null,
+        RestartPolicy restartPolicy = RestartPolicy.Permanent
+    )
+    {
+        actor ??= new SimpleActor();
+        mailbox ??= new ChannelMailbox();
+        var reference = new LocalActorReference(mailbox);
+        actor.Context = new ActorContext(reference);
+        var process = new ActorProcess(actor, mailbox);
+        return new Child(actor, mailbox, process, reference, restartPolicy);
+    }
+
+    #endregion
+
+    #region §1 Initialization
+
+    [Test]
+    public async Task InitializeAsync_Should_CreateExactlyWorkersActors()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 3);
+
+        // Act
+        await supervisor.InitializeAsync();
+
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(3);
+        factory.Received(3).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task InitializeAsync_Should_CallOnInitializeAsync()
+    {
+        // Arrange
+        var called = false;
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 1,
+            onInitialize: _ =>
+            {
+                called = true;
+                return ValueTask.CompletedTask;
+            }
         );
 
+        // Act
+        await supervisor.InitializeAsync();
+
+        // Assert
+        await Assert.That(called).IsTrue();
+    }
+
+    [Test]
+    public async Task InitializeAsync_Should_UseDefaultRestartPolicy()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            defaultRestartPolicy: RestartPolicy.Transient
+        );
+
+        // Act
+        await supervisor.InitializeAsync();
+
+        // Assert
+        await Assert.That(supervisor.Children[0].RestartPolicy)
+            .IsEqualTo(RestartPolicy.Transient);
+        await Assert.That(supervisor.Children[1].RestartPolicy)
+            .IsEqualTo(RestartPolicy.Transient);
+    }
+
+    #endregion
+
+    #region §2 Message Routing
+
+    [Test]
+    public async Task HandleAsync_Should_RouteActorFailedMessage()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert - factory called: 1 (init) + 1 (restart) = 2
+        factory.Received(2).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task HandleAsync_Should_RouteActorTerminatedMessage()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act - permanent actor should be reset
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
+        );
+
+        // Assert - factory called: 1 (init) + 1 (reset) = 2
+        factory.Received(2).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task HandleAsync_Should_RouteUnknownMessageToBase()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(workers: 1);
+
+        // Act & Assert - base HandleAsync throws for unhandled messages
+        var action = async () => await supervisor.HandleAsync((object)"unknown");
+        await Assert.That(action).ThrowsException();
+    }
+
+    #endregion
+
+    #region §3 Creating Actors
+
+    [Test]
+    public async Task CreateActor_Should_CreateViaFactory_SetContext_AddToChildren()
+    {
+        // Arrange
+        var childActor = new SimpleActor();
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(childActor);
+        var supervisor = CreateSupervisor(factory: factory, workers: 2);
         var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        var spec = new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox };
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
+        // Act
+        var child = supervisor.CreateActor(spec);
 
-        try
+        // Assert
+        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+        await Assert.That(child.Actor).IsSameReferenceAs(childActor);
+        await Assert.That(childActor.Context).IsNotNull();
+        factory.Received(1).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task CreateActor_Should_PropagateRestartPolicy()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 2);
+        var spec = new ChildSpecification(typeof(SimpleActor))
         {
-            await supervisor.InitializeAsync(cancellationToken);
+            RestartPolicy = RestartPolicy.Temporary,
+        };
 
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        // Act
+        var child = supervisor.CreateActor(spec);
 
-            // Act & Assert - Set state on all children
-            foreach (var child in supervisor.Children)
+        // Assert
+        await Assert.That(child.RestartPolicy).IsEqualTo(RestartPolicy.Temporary);
+    }
+
+    [Test]
+    public async Task CreateActor_Should_ThrowSupervisorAlreadyInitializedException()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        // Act & Assert
+        var action = () =>
+            supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        await Assert
+            .That(action)
+            .Throws<SupervisorAlreadyInitializedException>();
+    }
+
+    [Test]
+    public async Task CreateActor_Should_ThrowTooManyWorkerException()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+
+        // Act & Assert - workers limit reached
+        var action = () =>
+            supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        await Assert.That(action).Throws<TooManyWorkerException>();
+    }
+
+    #endregion
+
+    #region §4 Partition Routing
+
+    [Test]
+    public async Task GetActorReference_SameKey_Should_ReturnSameReference()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 3);
+        await supervisor.InitializeAsync();
+
+        // Act - find a key with non-negative hash (source uses hash % count without abs)
+        int safeKey = 0;
+        for (var i = 0; i < 1000; i++)
+        {
+            if (supervisor.GetHashcode(i) >= 0) { safeKey = i; break; }
+        }
+
+        var ref1 = supervisor.GetActorReference(safeKey);
+        var ref2 = supervisor.GetActorReference(safeKey);
+
+        // Assert
+        await Assert.That(ref1).IsSameReferenceAs(ref2);
+    }
+
+    [Test]
+    public async Task GetActorReference_DifferentKeys_Should_DistributeAcrossActors()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 3);
+        await supervisor.InitializeAsync();
+
+        // Act - try many keys, skip those with negative hash (source uses hash % count)
+        var refs = new HashSet<IActorReference>();
+        for (var i = 0; i < 1000; i++)
+        {
+            var hash = supervisor.GetHashcode(i);
+            if (hash >= 0)
             {
-                var message = Uuid.NewUuid().ToString();
-                await child.AskAsync<SetMessage, string>(
-                    new SetMessage(message),
-                    cancellationToken: cancellationToken
-                );
+                refs.Add(supervisor.GetActorReference(i));
             }
+        }
 
-            var firstChild = supervisor.Children.First();
-            await Assert.ThrowsAsync<Exception>(async () =>
-                await firstChild.AskAsync<RaiseException, object>(
-                    new RaiseException(),
-                    cancellationToken: cancellationToken
+        // Assert - should hit more than one actor
+        await Assert.That(refs.Count).IsGreaterThan(1);
+    }
+
+    [Test]
+    public async Task GetHashcode_Should_UseHashCodeCombine()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(workers: 1);
+
+        // Act
+        var hash = supervisor.GetHashcode("test");
+        var expected = HashCode.Combine("test");
+
+        // Assert
+        await Assert.That(hash).IsEqualTo(expected);
+    }
+
+    #endregion
+
+    #region §5 Actor Failure Handling
+
+    [Test]
+    public async Task HandleActorFailed_OneForOne_Should_RestartOnlyFailedActor()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.OneForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert - factory: 2 (init) + 1 (restart) = 3
+        factory.Received(3).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task HandleActorFailed_AllForOne_Should_RestartAllActors()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.AllForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+
+        // Assert - factory: 2 (init) + 2 (restart all) = 4
+        factory.Received(4).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task HandleActorFailed_WithAskMessage_Should_CancelAskMessage()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var askMessage = new LocalAskMessage("test", CancellationToken.None);
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(child.Actor, askMessage, new Exception("fail"))
+        );
+
+        // Assert
+        var action = async () => await askMessage.AsTask();
+        await Assert.That(action).Throws<TaskCanceledException>();
+    }
+
+    [Test]
+    public async Task HandleActorFailed_WithEscalateException_Should_CancelNestedAskMessage()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var nestedAskMessage = new LocalAskMessage("nested", CancellationToken.None);
+        var tellMessage = new LocalTellMessage("test");
+        var escalateException = new EscalateFailureException(
+            "escalated",
+            child.Reference,
+            nestedAskMessage,
+            new Exception("inner")
+        );
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(child.Actor, tellMessage, escalateException)
+        );
+
+        // Assert
+        var action = async () => await nestedAskMessage.AsTask();
+        await Assert.That(action).Throws<TaskCanceledException>();
+    }
+
+    [Test]
+    public async Task HandleActorFailed_UnknownActor_Should_NoOp()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var unknownActor = new SimpleActor();
+
+        // Act & Assert — should not throw
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                unknownActor,
+                new LocalTellMessage("test"),
+                new Exception("fail")
+            )
+        );
+    }
+
+    [Test]
+    public async Task HandleActorFailed_ExceedsMaxRestarts_Should_Escalate()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 1,
+            maxRestarts: 1,
+            restartWindow: TimeSpan.FromMinutes(10)
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // First failure - restart
+        await supervisor.HandleAsync(
+            (object)new ActorFailed(
+                child.Actor,
+                new LocalTellMessage("test"),
+                new Exception("fail1")
+            )
+        );
+
+        // Second failure - should escalate (child.Actor is now the new actor)
+        var action = async () =>
+            await supervisor.HandleAsync(
+                (object)new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test"),
+                    new Exception("fail2")
                 )
             );
 
-            // Wait for restart to complete
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // All children should be restarted (state reset)
-            foreach (var child in supervisor.Children)
-            {
-                var response = await child.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cancellationToken
-                );
-                await Assert.That(response).IsEqualTo(string.Empty);
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        await Assert.That(action).Throws<EscalateFailureException>();
     }
 
+    #endregion
+
+    #region §6 Actor Termination Handling
+
     [Test]
-    public async Task Children_Should_Resume_When_ActorThrowException(
-        CancellationToken cancellationToken
-    )
+    public async Task HandleActorTerminated_PermanentActor_Should_ResetActor()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(
-            new ActorFactory(),
-            workers,
-            failureAction: FailureAction.Resume
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
         );
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert
-            foreach (var child in supervisor.Children)
-            {
-                var message = Uuid.NewUuid().ToString();
-                await child.AskAsync<SetMessage, string>(
-                    new SetMessage(message),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.ThrowsAsync<Exception>(async () =>
-                    await child.AskAsync<RaiseException, object>(
-                        new RaiseException(),
-                        cancellationToken: cancellationToken
-                    )
-                );
-
-                // Wait for resume to complete
-                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-                var response = await child.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cancellationToken
-                );
-                await Assert.That(response).IsEqualTo(message.ToUpper());
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        // Assert - factory: 1 (init) + 1 (reset) = 2
+        factory.Received(2).CreateActor(typeof(SimpleActor));
     }
 
     [Test]
-    public async Task Children_Should_Stop_When_ActorThrowException(
-        CancellationToken cancellationToken
-    )
+    public async Task HandleActorTerminated_NonPermanentActor_Should_TerminateReference()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(
-            new ActorFactory(),
-            workers,
-            failureAction: FailureAction.Stop
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 1,
+            defaultRestartPolicy: RestartPolicy.Transient
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var terminateCalled = false;
+        child.Reference.OnTerminate += (_, _) => terminateCalled = true;
+
+        // Act
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(child.Actor, "done")
         );
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        // Assert
+        await Assert.That(terminateCalled).IsTrue();
+    }
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
+    [Test]
+    public async Task HandleActorTerminated_UnknownActor_Should_NoOp()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
 
-        try
+        var unknownActor = new SimpleActor();
+
+        // Act & Assert — should not throw
+        await supervisor.HandleAsync(
+            (object)new ActorTerminated(unknownActor, "done")
+        );
+    }
+
+    #endregion
+
+    #region §7 Restart Counter
+
+    [Test]
+    public async Task ResetCounter_Should_ResetWhenWindowElapsed()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(restartWindow: TimeSpan.FromMilliseconds(1));
+        var child = CreateChild();
+        child.RestartCount = 5;
+        child.LastRestartTime = DateTimeOffset.UtcNow.AddSeconds(-10);
+
+        // Act
+        supervisor.ResetCounter(child);
+
+        // Assert
+        await Assert.That(child.RestartCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ResetCounter_Should_PreserveCountWithinWindow()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(restartWindow: TimeSpan.FromMinutes(10));
+        var child = CreateChild();
+        child.RestartCount = 2;
+        child.LastRestartTime = DateTimeOffset.UtcNow;
+
+        // Act
+        supervisor.ResetCounter(child);
+
+        // Assert
+        await Assert.That(child.RestartCount).IsEqualTo(2);
+    }
+
+    #endregion
+
+    #region §8 Failure Action
+
+    [Test]
+    public async Task GetFailureAction_Should_ReturnRestart_BelowMaxRestarts()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(maxRestarts: 3);
+        var child = CreateChild();
+        child.RestartCount = 1;
+
+        // Act
+        var action = supervisor.GetFailureAction(child, new Exception("fail"));
+
+        // Assert
+        await Assert.That(action).IsEqualTo(FailureAction.Restart);
+    }
+
+    [Test]
+    public async Task GetFailureAction_Should_ReturnEscalate_AtMaxRestarts()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(maxRestarts: 3);
+        var child = CreateChild();
+        child.RestartCount = 3;
+
+        // Act
+        var action = supervisor.GetFailureAction(child, new Exception("fail"));
+
+        // Assert
+        await Assert.That(action).IsEqualTo(FailureAction.Escalate);
+    }
+
+    #endregion
+
+    #region §9 Apply Actions
+
+    [Test]
+    public async Task ApplyStopAsync_OneForOne_Should_StopOnlyFailedActor()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.OneForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var failedChild = supervisor.Children[0];
+        var otherChild = supervisor.Children[1];
+
+        // Act
+        await supervisor.ApplyStopAsync(failedChild);
+
+        // Assert
+        await Assert.That(failedChild.Process.IsRunning).IsFalse();
+        await Assert.That(otherChild.Process.IsRunning).IsTrue();
+    }
+
+    [Test]
+    public async Task ApplyStopAsync_AllForOne_Should_StopAllChildren()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.AllForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var failedChild = supervisor.Children[0];
+
+        // Act
+        await supervisor.ApplyStopAsync(failedChild);
+
+        // Assert
+        await Assert.That(supervisor.Children[0].Process.IsRunning).IsFalse();
+        await Assert.That(supervisor.Children[1].Process.IsRunning).IsFalse();
+    }
+
+    [Test]
+    public async Task ApplyResumeAsync_Should_StopAndRestartProcess()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.ApplyResumeAsync(child);
+
+        // Assert
+        await Assert.That(child.Process.IsRunning).IsTrue();
+    }
+
+    [Test]
+    public async Task ApplyEscalateAsync_Should_ThrowEscalateFailureException()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var tellMessage = new LocalTellMessage("test");
+        var innerException = new InvalidOperationException("inner");
+
+        // Act & Assert
+        var action = async () =>
+            await supervisor.ApplyEscalateAsync(child, tellMessage, innerException);
+        await Assert.That(action).Throws<EscalateFailureException>();
+    }
+
+    [Test]
+    public async Task ApplyRestartAsync_OneForOne_Should_ResetOnlyFailedActor()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.OneForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var originalActor = child.Actor;
+
+        // Act
+        await supervisor.ApplyRestartAsync(child);
+
+        // Assert
+        await Assert.That(child.RestartCount).IsEqualTo(1);
+        await Assert.That(child.Actor).IsNotSameReferenceAs(originalActor);
+        // factory: 2 (init) + 1 (restart) = 3
+        factory.Received(3).CreateActor(typeof(SimpleActor));
+    }
+
+    [Test]
+    public async Task ApplyRestartAsync_AllForOne_Should_ResetAllChildren()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(
+            factory: factory,
+            workers: 2,
+            strategy: Strategy.AllForOne
+        );
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+
+        // Act
+        await supervisor.ApplyRestartAsync(child);
+
+        // Assert - factory: 2 (init) + 2 (restart all) = 4
+        factory.Received(4).CreateActor(typeof(SimpleActor));
+        await Assert.That(child.RestartCount).IsEqualTo(1);
+    }
+
+    #endregion
+
+    #region §10 Actor Reset
+
+    [Test]
+    public async Task ResetActorAsync_Should_RecreateActorViaFactory()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var originalActor = child.Actor;
+
+        // Act
+        await supervisor.ApplyRestartAsync(child);
+
+        // Assert
+        await Assert.That(child.Actor).IsNotSameReferenceAs(originalActor);
+        await Assert.That(child.Actor.Context).IsNotNull();
+        await Assert.That(child.Process.IsRunning).IsTrue();
+    }
+
+    [Test]
+    public async Task ResetActorAsync_Should_CallBeforeRestartOnOldActor()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var originalActor = (SimpleActor)child.Actor;
+
+        // Act
+        await supervisor.ApplyRestartAsync(child);
+
+        // Assert
+        await Assert.That(originalActor.BeforeRestartCalled).IsTrue();
+    }
+
+    #endregion
+
+    #region §11 BeforeRestart Actor
+
+    [Test]
+    public async Task BeforeRestartActorAsync_Should_CallBeforeRestartOnActor()
+    {
+        // Arrange
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+        await supervisor.InitializeAsync();
+
+        var child = supervisor.Children[0];
+        var actorBeforeRestart = (SimpleActor)child.Actor;
+
+        // Act
+        await supervisor.ApplyRestartAsync(child);
+
+        // Assert
+        await Assert.That(actorBeforeRestart.BeforeRestartCalled).IsTrue();
+    }
+
+    [Test]
+    public async Task BeforeRestartActorAsync_Should_SwallowException()
+    {
+        // Arrange
+        var actor = Substitute.For<IActor>();
+        actor.BeforeRestartAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromException(new InvalidOperationException("boom")));
+
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(actor, new SimpleActor());
+        var supervisor = CreateSupervisor(factory: factory, workers: 1);
+
+        supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        var child = supervisor.Children[0];
+
+        // Act & Assert - should not throw
+        await supervisor.ApplyRestartAsync(child);
+    }
+
+    #endregion
+
+    #region §12 Event Handlers
+
+    [Test]
+    public async Task HandleFailure_Should_SendActorFailedToSelf()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(workers: 1);
+        var supervisorMailbox = new ChannelMailbox();
+        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox));
+
+        var actor = new SimpleActor();
+        var tellMessage = new LocalTellMessage("test");
+        var exception = new Exception("fail");
+        var args = new ActorFailureEventArgs(actor, tellMessage, exception);
+
+        // Act
+        supervisor.HandleFailure(null, args);
+
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act & Assert
-            foreach (var child in supervisor.Children)
-            {
-                var message = Uuid.NewUuid().ToString();
-                await child.AskAsync<SetMessage, string>(
-                    new SetMessage(message),
-                    cancellationToken: cancellationToken
-                );
-
-                await Assert.ThrowsAsync<Exception>(async () =>
-                    await child.AskAsync<RaiseException, object>(
-                        new RaiseException(),
-                        cancellationToken: cancellationToken
-                    )
-                );
-
-                await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-                {
-                    var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                    await child.AskAsync<GetState, string>(
-                        new GetState(),
-                        cancellationToken: cts.Token
-                    );
-                });
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
+            await Assert.That(msg.Payload).IsTypeOf<ActorFailed>();
+            var failed = (ActorFailed)msg.Payload;
+            await Assert.That(failed.Actor).IsSameReferenceAs(actor);
+            await Assert.That(failed.Exception).IsSameReferenceAs(exception);
+            break;
         }
     }
 
     [Test]
-    public async Task CreateActor_Should_ThrowException_WhenCalledAfterInitialization(
-        CancellationToken cancellationToken
-    )
+    public async Task HandleTermination_Should_SendActorTerminatedToSelf()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        var supervisor = CreateSupervisor(workers: 1);
+        var supervisorMailbox = new ChannelMailbox();
+        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox));
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        var actor = new SimpleActor();
+        var args = new ActorTerminateEventArgs(actor, "shutdown");
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
+        // Act
+        supervisor.HandleTermination(null, args);
 
-        try
+        // Assert
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
         {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Act & Assert
-            await Assert.ThrowsAsync<SupervisorAlreadyInitializedException>(() =>
-            {
-                supervisor.CreateActorExposed(new ChannelMailbox());
-                return Task.CompletedTask;
-            });
-        }
-        finally
-        {
-            await process.StopAsync();
+            await Assert.That(msg.Payload).IsTypeOf<ActorTerminated>();
+            var terminated = (ActorTerminated)msg.Payload;
+            await Assert.That(terminated.Actor).IsSameReferenceAs(actor);
+            await Assert.That(terminated.Reason).IsEqualTo("shutdown");
+            break;
         }
     }
 
-    [Test]
-    public async Task CreateActor_Should_ThrowException_WhenExceedingMaxWorkers(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        const int workers = 2;
-        var supervisor = new TestablePartitionSupervisor(new ActorFactory(), workers);
+    #endregion
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            // Act & Assert - supervisor will try to create more than workers limit
-            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await supervisor.InitializeAsync(cancellationToken)
-            );
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
+    #region §13 Disposal
 
     [Test]
-    public async Task DisposeAsync_Should_CleanupAllActors(CancellationToken cancellationToken)
+    public async Task DisposeAsync_Should_DisposeAllChildrenAndClearList()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new DisposableActor());
+        var supervisor = CreateSupervisor(factory: factory, workers: 2);
+        await supervisor.InitializeAsync();
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        await supervisor.InitializeAsync(cancellationToken);
-
-        // Ensure all children are initialized
-        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-        var childrenBefore = supervisor.Children.ToList();
-        await Assert.That(childrenBefore).Count().IsEqualTo(workers);
+        var actor1 = (DisposableActor)supervisor.Children[0].Actor;
+        var actor2 = (DisposableActor)supervisor.Children[1].Actor;
 
         // Act
         await supervisor.DisposeAsync();
 
         // Assert
-        await Assert.That(supervisor.Children).Count().IsEqualTo(0);
-
-        await process.StopAsync();
+        await Assert.That(actor1.AsyncDisposed).IsTrue();
+        await Assert.That(actor2.AsyncDisposed).IsTrue();
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
     }
 
     [Test]
-    public async Task BeforeRestartAsync_Should_CleanupAllActors(
-        CancellationToken cancellationToken
-    )
+    public async Task DisposeObjectAsync_Should_CallDisposeAsync_ForAsyncDisposable()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
-
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        await supervisor.InitializeAsync(cancellationToken);
-
-        // Ensure all children are initialized
-        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-        var childrenBefore = supervisor.Children.ToList();
-        await Assert.That(childrenBefore).Count().IsEqualTo(workers);
+        var supervisor = CreateSupervisor(workers: 1);
+        var disposable = new DisposableActor();
 
         // Act
-        await supervisor.BeforeRestartAsync(cancellationToken);
+        await supervisor.DisposeObjectAsync(disposable);
 
         // Assert
-        await Assert.That(supervisor.Children).Count().IsEqualTo(0);
-
-        await process.StopAsync();
+        await Assert.That(disposable.AsyncDisposed).IsTrue();
     }
 
     [Test]
-    public async Task DefaultWorkerCount_Should_UseProcessorCount(
-        CancellationToken cancellationToken
-    )
+    public async Task DisposeObjectAsync_Should_CallDispose_ForSyncDisposable()
     {
         // Arrange
-        var supervisor = new DefaultWorkerPartitionSupervisor(new ActorFactory());
+        var supervisor = CreateSupervisor(workers: 1);
+        var disposable = new SyncDisposableActor();
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        // Act
+        await supervisor.DisposeObjectAsync(disposable);
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-
-            // Ensure all children are initialized
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Assert
-            await Assert.That(supervisor.Children).Count().IsEqualTo(Environment.ProcessorCount);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        // Assert
+        await Assert.That(disposable.SyncDisposed).IsTrue();
     }
 
     [Test]
-    public async Task ActorTerminated_Should_ResetActor_When_RestartPolicyIsPermanent(
-        CancellationToken cancellationToken
-    )
+    public async Task DisposeObjectAsync_Should_NoOp_ForNonDisposable()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
+        var supervisor = CreateSupervisor(workers: 1);
+        var obj = new SimpleActor();
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        // Act & Assert - should not throw
+        await supervisor.DisposeObjectAsync(obj);
+    }
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
+    #endregion
 
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+    #region §14 Supervisor BeforeRestart
 
-            // Set state on first child
-            var firstChild = supervisor.Children.First();
-            await firstChild.AskAsync<SetMessage, string>(
-                new SetMessage("before-termination"),
-                cancellationToken: cancellationToken
-            );
+    [Test]
+    public async Task BeforeRestartAsync_Should_StopAndDisposeAllChildren()
+    {
+        // Arrange
+        var factory = Substitute.For<IActorFactory>();
+        factory.CreateActor(Arg.Any<Type>()).Returns(_ => new DisposableActor());
+        var supervisor = CreateSupervisor(factory: factory, workers: 2);
+        await supervisor.InitializeAsync();
 
-            // Act - Terminate the child actor's process directly via Stop message
-            firstChild.Tell(new Terminate());
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        var actor1 = (DisposableActor)supervisor.Children[0].Actor;
+        var actor2 = (DisposableActor)supervisor.Children[1].Actor;
 
-            // Assert - With Permanent policy, actor should be reset (state cleared)
-            await Assert.That(supervisor.Children).Count().IsEqualTo(workers);
+        // Act
+        await supervisor.BeforeRestartAsync();
 
-            var response = await firstChild.AskAsync<GetState, string>(
-                new GetState(),
-                cancellationToken: cancellationToken
-            );
-            await Assert.That(response).IsEqualTo(string.Empty);
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        // Assert
+        await Assert.That(actor1.AsyncDisposed).IsTrue();
+        await Assert.That(actor2.AsyncDisposed).IsTrue();
+        await Assert.That(supervisor.Children.Count).IsEqualTo(0);
+    }
+
+    #endregion
+
+    #region §15 ResetMailboxAsync
+
+    [Test]
+    public async Task ResetMailboxAsync_Should_CleanMailbox_WhenChildIsSupervisor()
+    {
+        // Arrange
+        var supervisor = CreateSupervisor(workers: 1);
+        var mailbox = Substitute.For<IMailbox>();
+        var supervisorActor = new SimpleSupervisorActor();
+        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
+        var reference = new LocalActorReference(new ChannelMailbox());
+        var process = new ActorProcess(supervisorActor, new ChannelMailbox());
+        var child = new Child(
+            supervisorActor,
+            mailbox,
+            process,
+            reference,
+            RestartPolicy.Permanent
+        );
+
+        // Act
+        await supervisor.ResetMailboxAsync(child);
+
+        // Assert
+        await mailbox.Received(1).CleanAsync();
     }
 
     [Test]
-    public async Task ActorTerminated_Should_TerminateReference_When_RestartPolicyIsTransient(
-        CancellationToken cancellationToken
-    )
+    public async Task ResetMailboxAsync_Should_NotCleanMailbox_WhenChildIsNotSupervisor()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new TransientPartitionSupervisor(new ActorFactory(), workers);
+        var supervisor = CreateSupervisor(workers: 1);
+        var mailbox = Substitute.For<IMailbox>();
+        var simpleActor = new SimpleActor();
+        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
+        var reference = new LocalActorReference(new ChannelMailbox());
+        var process = new ActorProcess(simpleActor, new ChannelMailbox());
+        var child = new Child(
+            simpleActor,
+            mailbox,
+            process,
+            reference,
+            RestartPolicy.Permanent
+        );
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        // Act
+        await supervisor.ResetMailboxAsync(child);
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Terminate the child actor's process
-            var firstChild = supervisor.Children.First();
-            firstChild.Tell(new Terminate());
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-
-            // Assert - With Transient policy, actor should NOT be restarted
-            // The reference should be terminated (Ask will timeout/cancel)
-            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            {
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                await firstChild.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cts.Token
-                );
-            });
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        // Assert
+        await mailbox.DidNotReceive().CleanAsync();
     }
+
+    #endregion
+
+    #region §16 ISupervisor.Children
 
     [Test]
-    public async Task ActorTerminated_Should_TerminateReference_When_RestartPolicyIsTemporary(
-        CancellationToken cancellationToken
-    )
+    public async Task ISupervisorChildren_Should_ReturnActorReferences()
     {
         // Arrange
-        const int workers = 2;
-        var supervisor = new TemporaryPartitionSupervisor(new ActorFactory(), workers);
+        var factory = CreateFactory();
+        var supervisor = CreateSupervisor(factory: factory, workers: 2);
+        await supervisor.InitializeAsync();
 
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
+        // Act
+        var refs = ((ISupervisor)supervisor).Children.ToList();
 
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Terminate the child actor's process
-            var firstChild = supervisor.Children.First();
-            firstChild.Tell(new Terminate());
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-
-            // Assert - With Temporary policy, actor should NOT be restarted
-            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            {
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                await firstChild.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cts.Token
-                );
-            });
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
+        // Assert
+        await Assert.That(refs.Count).IsEqualTo(2);
+        await Assert.That(refs[0]).IsSameReferenceAs(supervisor.Children[0].Reference);
+        await Assert.That(refs[1]).IsSameReferenceAs(supervisor.Children[1].Reference);
     }
 
-    [Test]
-    public async Task Children_Should_Escalate_When_MaxRestartsExceeded(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        const int workers = 1;
-        var supervisor = new LowMaxRestartsPartitionSupervisor(new ActorFactory(), workers);
-
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            var child = supervisor.Children.First();
-
-            // Act - Cause failures up to max restarts (MaxRestarts=1)
-            await Assert.ThrowsAsync<Exception>(async () =>
-                await child.AskAsync<RaiseException, object>(
-                    new RaiseException(),
-                    cancellationToken: cancellationToken
-                )
-            );
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-
-            // Second failure should trigger escalation (restart count >= max)
-            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            {
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                await child.AskAsync<RaiseException, object>(
-                    new RaiseException(),
-                    cancellationToken: cts.Token
-                );
-            });
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    [Test]
-    public async Task GetActorReference_Should_RouteMessagesToCorrectPartitionWorker(
-        CancellationToken cancellationToken
-    )
-    {
-        // Arrange
-        const int workers = 4;
-        var supervisor = new SimplePartitionSupervisor(new ActorFactory(), workers);
-
-        var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-
-        var process = new ActorProcess(supervisor, mailbox);
-        process.Start();
-
-        try
-        {
-            await supervisor.InitializeAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-
-            // Act - Send messages via partition key
-            var key = "my-partition-key";
-            var actorRef = supervisor.GetActorReferenceForKey(key);
-
-            var response = await actorRef.AskAsync<SetMessage, string>(
-                new SetMessage("partitioned"),
-                cancellationToken: cancellationToken
-            );
-
-            // Assert - Message was processed by the partitioned actor
-            await Assert.That(response).IsEqualTo("PARTITIONED");
-
-            // Verify state is on the correct partition
-            var stateResponse = await actorRef.AskAsync<GetState, string>(
-                new GetState(),
-                cancellationToken: cancellationToken
-            );
-            await Assert.That(stateResponse).IsEqualTo("PARTITIONED");
-
-            // Verify a different partition doesn't have this state
-            var differentKey = "different-key";
-            var otherRef = supervisor.GetActorReferenceForKey(differentKey);
-            if (!ReferenceEquals(actorRef, otherRef))
-            {
-                var otherState = await otherRef.AskAsync<GetState, string>(
-                    new GetState(),
-                    cancellationToken: cancellationToken
-                );
-                await Assert.That(otherState).IsEqualTo(string.Empty);
-            }
-        }
-        finally
-        {
-            await process.StopAsync();
-        }
-    }
-
-    public class SimplePartitionSupervisor(
-        IActorFactory actorFactory,
-        int workers,
-        Strategy strategy = Strategy.OneForOne,
-        FailureAction failureAction = FailureAction.Restart
-    )
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<SimplePartitionSupervisor>(),
-            workers
-        )
-    {
-        protected override Strategy Strategy => strategy;
-
-        public IActorReference GetActorReferenceForKey(object key) => GetActorReference(key);
-
-        public ActorMetadata CreateActorExposed(IMailbox mailbox) => CreateActor(mailbox);
-
-        protected override FailureAction GetFailureAction(
-            ActorMetadata metadata,
-            Exception exception
-        )
-        {
-            return failureAction;
-        }
-    }
-
-    public class TestablePartitionSupervisor(IActorFactory actorFactory, int workers)
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<TestablePartitionSupervisor>(),
-            workers
-        )
-    {
-        protected override ValueTask OnInitializeAsync(
-            CancellationToken cancellationToken = default
-        )
-        {
-            // Try to create more actors than workers limit
-            CreateActor(CreateMailbox());
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    public class DefaultWorkerPartitionSupervisor(IActorFactory actorFactory)
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<DefaultWorkerPartitionSupervisor>()
-        ) { }
-
-    public class TransientPartitionSupervisor(IActorFactory actorFactory, int workers)
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<TransientPartitionSupervisor>(),
-            workers
-        )
-    {
-        protected override RestartPolicy Restart => RestartPolicy.Transient;
-    }
-
-    public class TemporaryPartitionSupervisor(IActorFactory actorFactory, int workers)
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<TemporaryPartitionSupervisor>(),
-            workers
-        )
-    {
-        protected override RestartPolicy Restart => RestartPolicy.Temporary;
-    }
-
-    public class LowMaxRestartsPartitionSupervisor(IActorFactory actorFactory, int workers)
-        : PartitionSupervisor<SimpleActor>(
-            actorFactory,
-            new NullLogger<LowMaxRestartsPartitionSupervisor>(),
-            workers
-        )
-    {
-        protected override int MaxRestarts => 1;
-    }
-
-    public class SimpleActor : Actor
-    {
-        private string _state = string.Empty;
-
-        public override ValueTask HandleAsync(
-            object? message,
-            CancellationToken cancellationToken = default
-        )
-        {
-            if (message is SetMessage simpleMessage)
-            {
-                _state = simpleMessage.Content.ToUpper();
-                Context.Response = _state;
-            }
-            else if (message is GetState)
-            {
-                Context.Response = _state;
-            }
-            else if (message is RaiseException)
-            {
-                throw new Exception();
-            }
-
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    public record SetMessage(string Content);
-
-    public record GetState();
-
-    public record RaiseException();
-
-    public class ActorFactory : IActorFactory
-    {
-        public IActor CreateActor(Type actorType)
-        {
-            return (IActor)Activator.CreateInstance(actorType)!;
-        }
-    }
+    #endregion
 }

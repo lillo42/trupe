@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,10 +58,10 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual Strategy Strategy => Strategy.OneForOne;
 
     /// <summary>
-    /// Gets the restart policy that determines how terminated child actors are handled.
+    /// Gets the default restart policy for child actors.
     /// Default is <see cref="RestartPolicy.Permanent"/>.
     /// </summary>
-    protected virtual RestartPolicy Restart => RestartPolicy.Permanent;
+    protected virtual RestartPolicy DefaultRestartPolicy => RestartPolicy.Permanent;
 
     /// <summary>
     /// Gets the maximum number of restarts allowed within the <see cref="RestartWindow"/>.
@@ -78,12 +79,12 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <summary>
     /// Gets or sets the list of actor metadata for all child actors managed by this supervisor.
     /// </summary>
-    protected ImmutableList<ActorMetadata> Actors { get; private set; } = [];
+    protected ImmutableList<Child> Children { get; private set; } = [];
 
     /// <summary>
     /// Gets the collection of actor references for all child actors.
     /// </summary>
-    public IEnumerable<IActorReference> Children => Actors.Select(x => x.Reference);
+    IEnumerable<IActorReference> ISupervisor.Children => Children.Select(x => x.Reference);
 
     private bool _initialized;
 
@@ -105,7 +106,13 @@ public abstract partial class PartitionSupervisor<TActor>(
     {
         for (var i = 0; i < Workers; i++)
         {
-            CreateActor(CreateMailbox());
+            CreateActor(
+                new ChildSpecification(typeof(TActor))
+                {
+                    RestartPolicy = DefaultRestartPolicy,
+                    Mailbox = CreateMailbox(),
+                }
+            );
         }
 
         await OnInitializeAsync(cancellationToken);
@@ -120,7 +127,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         CancellationToken cancellationToken = default
     )
     {
-        foreach (var metadata in Actors)
+        foreach (var metadata in Children)
         {
             await StopActorAsync(metadata);
 
@@ -131,7 +138,7 @@ public abstract partial class PartitionSupervisor<TActor>(
             metadata.Metadata.Clear();
         }
 
-        Actors = [];
+        Children = [];
     }
 
     /// <inheritdoc />
@@ -168,58 +175,21 @@ public abstract partial class PartitionSupervisor<TActor>(
     )
     {
         using var _actorType = Logger.BeginScope("{ActorType}", message.Actor.GetType());
-        LoggerMessages.ProcessingFailedActor(Logger, message.Exception);
+        Log.ProcessingFailedActor(Logger, message.Exception);
 
-        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
-        if (metadata == null)
+        var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
+        if (child == null)
         {
-            LoggerMessages.ActorNotFound(Logger);
+            Log.ActorNotFound(Logger);
             return;
         }
 
-        ResetCounter(metadata);
-
-        var action = GetFailureAction(metadata, message.Exception);
-
-        LoggerMessages.GoingToApplyFailureAction(Logger, action, Strategy);
-        if (action == FailureAction.Restart)
-        {
-            await ApplyRestartAsync(metadata);
-        }
-        else if (action == FailureAction.Stop)
-        {
-            await ApplyStopAsync(metadata);
-        }
-        else if (action == FailureAction.Escalate)
-        {
-            await ApplyEscalateAsync(metadata, message.Message, message.Exception);
-        }
-        else
-        {
-            await ApplyResumeAsync(metadata);
-        }
-
-        if (message.Message is IAskMessage askMessage)
-        {
-            LoggerMessages.CancelAskMessage(Logger);
-            askMessage.SetCanceled();
-        }
-
-        if (
-            message.Exception is EscalateFailureException
-            {
-                ActorMessage: IAskMessage escalateAskMessage
-            }
-        )
-        {
-            LoggerMessages.CancelAskMessage(Logger);
-            escalateAskMessage.SetCanceled();
-        }
+        await OnActorFailed(child, message.Message, message.Exception, cancellationToken);
+        Log.FailedActorProcessed(Logger);
     }
 
     /// <summary>
-    /// Handles a terminated actor message by resetting or terminating the actor
-    /// based on the current <see cref="Restart"/> policy.
+    /// Handles a terminated actor message by applying the appropriate action based on the actor's restart policy.
     /// </summary>
     /// <param name="message">The actor terminated message containing termination details.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
@@ -229,25 +199,18 @@ public abstract partial class PartitionSupervisor<TActor>(
         CancellationToken cancellationToken = default
     )
     {
-        LoggerMessages.ProcessingTerminatedActor(Logger, message.Reason);
+        Log.ProcessingTerminatedActor(Logger, message.Reason);
 
-        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
-        if (metadata == null)
+        var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
+        if (child == null)
         {
-            LoggerMessages.ActorNotFound(Logger);
+            Log.ActorNotFound(Logger);
             return;
         }
 
-        if (Restart == RestartPolicy.Permanent)
-        {
-            await ResetActorAsync(metadata);
-        }
-        else
-        {
-            metadata.Reference.Terminate(message.Reason);
-        }
+        await OnActorTerminated(child, message.Reason);
 
-        LoggerMessages.FinishedProcessingTerminatedActor(Logger);
+        Log.FinishedProcessingTerminatedActor(Logger);
     }
 
     /// <summary>
@@ -258,7 +221,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     {
         GC.SuppressFinalize(this);
 
-        foreach (var metadata in Actors)
+        foreach (var metadata in Children)
         {
             await DisposeObjectAsync(metadata.Actor);
 
@@ -267,31 +230,34 @@ public abstract partial class PartitionSupervisor<TActor>(
             metadata.Metadata.Clear();
         }
 
-        Actors = [];
+        Children = [];
     }
 
     /// <summary>
-    /// Gets the actor reference for a given partition key.
-    /// The same key will always route to the same actor.
+    /// Gets the actor reference for a given partition key by computing a hash-based index into the children list.
     /// </summary>
-    /// <param name="key">The partition key used to determine which actor to route to.</param>
-    /// <returns>The actor reference for the partition.</returns>
-    protected virtual IActorReference GetActorReference(object key)
+    /// <typeparam name="TKey">The type of the partition key.</typeparam>
+    /// <param name="key">The partition key used to determine the target actor.</param>
+    /// <returns>The actor reference assigned to the partition for the given key.</returns>
+    protected virtual IActorReference GetActorReference<TKey>(TKey key)
+        where TKey : notnull
     {
-        var hash = Math.Abs(GetHashcode(key));
+        var hash = GetHashcode(key);
 
-        return Actors[hash % Actors.Count].Reference;
+        return Children[hash % Children.Count].Reference;
     }
 
     /// <summary>
-    /// Gets the hash code for a partition key.
-    /// Override this method to customize partition key hashing.
+    /// Computes a hash code for the given partition key.
+    /// Override this method to customize the partitioning strategy.
     /// </summary>
-    /// <param name="key">The partition key.</param>
-    /// <returns>The hash code for the key.</returns>
-    protected virtual int GetHashcode(object key)
+    /// <typeparam name="TKey">The type of the partition key.</typeparam>
+    /// <param name="key">The partition key to hash.</param>
+    /// <returns>A hash code used to determine the partition index.</returns>
+    protected virtual int GetHashcode<TKey>(TKey key)
+        where TKey : notnull
     {
-        return key.GetHashCode();
+        return HashCode.Combine(key);
     }
 
     /// <summary>
@@ -306,6 +272,77 @@ public abstract partial class PartitionSupervisor<TActor>(
     }
 
     /// <summary>
+    /// Called when a child actor fails. Resets the restart counter, determines the failure action,
+    /// and cancels any pending ask messages associated with the failure.
+    /// </summary>
+    /// <param name="child">The metadata of the failed child actor.</param>
+    /// <param name="message">The message that was being processed when the failure occurred.</param>
+    /// <param name="exception">The exception that caused the failure.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the failure handling operation.</returns>
+    protected virtual async Task OnActorFailed(
+        Child child,
+        IMessage message,
+        Exception exception,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ResetCounter(child);
+
+        var action = GetFailureAction(child, exception);
+
+        Log.GoingToApplyFailureAction(Logger, action, Strategy);
+        if (action == FailureAction.Restart)
+        {
+            await ApplyRestartAsync(child);
+        }
+        else if (action == FailureAction.Stop)
+        {
+            await ApplyStopAsync(child);
+        }
+        else if (action == FailureAction.Escalate)
+        {
+            await ApplyEscalateAsync(child, message, exception);
+        }
+        else
+        {
+            await ApplyResumeAsync(child);
+        }
+
+        if (message is IAskMessage askMessage)
+        {
+            Log.CancelAskMessage(Logger);
+            askMessage.SetCanceled();
+        }
+
+        if (exception is EscalateFailureException { ActorMessage: IAskMessage escalateAskMessage })
+        {
+            Log.CancelAskMessage(Logger);
+            escalateAskMessage.SetCanceled();
+        }
+    }
+
+    /// <summary>
+    /// Called when a child actor terminates. Permanent actors are restarted;
+    /// non-permanent actors have their references terminated.
+    /// </summary>
+    /// <param name="child">The metadata of the terminated child actor.</param>
+    /// <param name="reason">The reason for termination, or <see langword="null"/> if not specified.</param>
+    /// <returns>A task representing the termination handling operation.</returns>
+    protected virtual ValueTask OnActorTerminated(Child child, string? reason)
+    {
+        if (child.RestartPolicy == RestartPolicy.Permanent)
+        {
+            return new ValueTask(ResetActorAsync(child));
+        }
+        else
+        {
+            child.Reference.Terminate(reason);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
     /// Creates a mailbox for a new worker actor.
     /// Override this method to use a custom mailbox implementation.
     /// </summary>
@@ -316,39 +353,48 @@ public abstract partial class PartitionSupervisor<TActor>(
     }
 
     /// <summary>
-    /// Creates and starts a new child actor.
+    /// Creates and starts a new child actor from a <see cref="ChildSpecification"/>.
     /// </summary>
-    /// <param name="mailbox">The mailbox for the actor.</param>
-    /// <returns>The metadata for the created actor.</returns>
-    protected virtual ActorMetadata CreateActor(IMailbox mailbox)
+    /// <param name="specification">The specification defining the actor to create.</param>
+    /// <returns>The metadata for the created child actor.</returns>
+    /// <exception cref="SupervisorAlreadyInitializedException">Thrown if the supervisor has already been initialized.</exception>
+    /// <exception cref="TooManyWorkerException">Thrown if the maximum number of workers has been reached.</exception>
+    protected virtual Child CreateActor(ChildSpecification specification)
     {
         if (_initialized)
         {
-            throw new SupervisorAlreadyInitializedException("");
+            throw new SupervisorAlreadyInitializedException(
+                "Supervisor has already been initialized. Cannot create new actors after initialization."
+            );
         }
 
-        if (Actors.Count >= Workers)
+        if (Children.Count >= Workers)
         {
-            // TODO: Improve exception message to include more details about the supervisor and the attempted creation.
-            throw new System.InvalidOperationException(
+            throw new TooManyWorkerException(
                 $"Cannot create more than {Workers} actors in a partition supervisor."
             );
         }
 
-        var reference = new LocalActorReference(mailbox);
+        var reference = new LocalActorReference(specification.Mailbox);
         var actor = ActorFactory.CreateActor(typeof(TActor));
         actor.Context = new ActorContext(reference);
 
-        var process = new ActorProcess(actor, mailbox);
+        var process = new ActorProcess(actor, specification.Mailbox);
         process.Failure += HandleFailure;
         process.Terminate += HandleTermination;
 
-        var metadata = new ActorMetadata(actor, mailbox, process, reference);
-        Actors = Actors.Add(metadata);
+        var child = new Child(
+            actor,
+            specification.Mailbox,
+            process,
+            reference,
+            specification.RestartPolicy
+        );
+        Children = Children.Add(child);
 
         process.Start(new LocalTellMessage(new InitializeActor()));
 
-        return metadata;
+        return child;
     }
 
     /// <summary>
@@ -359,7 +405,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual void HandleFailure(object? sender, ActorFailureEventArgs args)
     {
         using var _ = Logger.BeginScope("{ActorType}", args.Actor.GetType());
-        LoggerMessages.HandlingFailedActor(Logger, args.Exception);
+        Log.HandlingFailedActor(Logger, args.Exception);
         Context.Self.Tell(new ActorFailed(args.Actor, args.Message, args.Exception));
     }
 
@@ -371,7 +417,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual void HandleTermination(object? sender, ActorTerminateEventArgs args)
     {
         using var _ = Logger.BeginScope("{ActorType}", args.Actor.GetType());
-        LoggerMessages.HandlingTerminatedActor(Logger, args.Reason);
+        Log.HandlingTerminatedActor(Logger, args.Reason);
         Context.Self.Tell(new ActorTerminated(args.Actor, args.Reason));
     }
 
@@ -398,12 +444,12 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// Resets the restart counter if the restart window has elapsed.
     /// </summary>
     /// <param name="metadata">The actor metadata to check.</param>
-    protected virtual void ResetCounter(ActorMetadata metadata)
+    protected virtual void ResetCounter(Child metadata)
     {
         var now = DateTimeOffset.UtcNow;
         if ((now - metadata.LastRestartTime) > RestartWindow)
         {
-            LoggerMessages.ResetingActorCounter(Logger, metadata.ActorType);
+            Log.ResetingActorCounter(Logger, metadata.ActorType);
             metadata.RestartCount = 0;
         }
     }
@@ -414,7 +460,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <param name="metadata">The metadata of the failed actor.</param>
     /// <param name="exception">The exception that caused the failure.</param>
     /// <returns>The action to take in response to the failure.</returns>
-    protected virtual FailureAction GetFailureAction(ActorMetadata metadata, Exception exception)
+    protected virtual FailureAction GetFailureAction(Child metadata, Exception exception)
     {
         if (metadata.RestartCount >= MaxRestarts)
         {
@@ -429,7 +475,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the failed actor.</param>
     /// <returns>A task representing the stop operation.</returns>
-    protected virtual async Task ApplyStopAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyStopAsync(Child metadata)
     {
         if (Strategy == Strategy.OneForOne)
         {
@@ -437,7 +483,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         }
         else if (Strategy == Strategy.AllForOne)
         {
-            await Task.WhenAll(Actors.Select(StopActorAsync));
+            await Task.WhenAll(Children.Select(StopActorAsync));
         }
     }
 
@@ -446,15 +492,15 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the actor to stop.</param>
     /// <returns>A task representing the stop operation.</returns>
-    protected virtual async Task StopActorAsync(ActorMetadata metadata)
+    protected virtual async Task StopActorAsync(Child metadata)
     {
-        LoggerMessages.StoppingActor(Logger);
+        Log.StoppingActor(Logger);
 
         metadata.Process.Failure -= HandleFailure;
         metadata.Process.Terminate -= HandleTermination;
         await metadata.Process.StopAsync();
 
-        LoggerMessages.ActorStopped(Logger);
+        Log.ActorStopped(Logger);
     }
 
     /// <summary>
@@ -462,14 +508,14 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the actor to resume.</param>
     /// <returns>A task representing the resume operation.</returns>
-    protected virtual async Task ApplyResumeAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyResumeAsync(Child metadata)
     {
-        LoggerMessages.ResumingActor(Logger);
+        Log.ResumingActor(Logger);
 
         await metadata.Process.StopAsync();
         metadata.Process.Start();
 
-        LoggerMessages.ActorResumed(Logger);
+        Log.ActorResumed(Logger);
     }
 
     /// <summary>
@@ -481,12 +527,12 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the escalation operation.</returns>
     /// <exception cref="EscalateFailureException">Always thrown to escalate to parent.</exception>
     protected virtual async Task ApplyEscalateAsync(
-        ActorMetadata metadata,
+        Child metadata,
         IMessage message,
         Exception exception
     )
     {
-        LoggerMessages.ScalatingError(Logger);
+        Log.ScalatingError(Logger);
 
         await metadata.Process.StopAsync();
         throw new EscalateFailureException(
@@ -502,7 +548,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the failed actor.</param>
     /// <returns>A task representing the restart operation.</returns>
-    protected virtual async Task ApplyRestartAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyRestartAsync(Child metadata)
     {
         metadata.RestartCount++;
         metadata.LastRestartTime = DateTimeOffset.UtcNow;
@@ -513,39 +559,41 @@ public abstract partial class PartitionSupervisor<TActor>(
         }
         else if (Strategy == Strategy.AllForOne)
         {
-            await Task.WhenAll(Actors.Select(ResetActorAsync));
+            await Task.WhenAll(Children.Select(ResetActorAsync));
         }
     }
 
     /// <summary>
     /// Resets an actor by stopping, disposing, and recreating it.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor to reset.</param>
+    /// <param name="child">The metadata of the actor to reset.</param>
     /// <returns>A task representing the reset operation.</returns>
-    protected virtual async Task ResetActorAsync(ActorMetadata metadata)
+    protected virtual async Task ResetActorAsync(Child child)
     {
-        LoggerMessages.ResetingActor(Logger);
+        Log.ResetingActor(Logger);
 
-        await StopActorAsync(metadata);
-        await BeforeRestartActorAsync(metadata);
+        await StopActorAsync(child);
+        await BeforeRestartActorAsync(child);
 
-        await DisposeObjectAsync(metadata.Actor);
+        await DisposeObjectAsync(child.Actor);
 
-        await ResetMailboxAsync(metadata);
+        await ResetMailboxAsync(child);
 
-        LoggerMessages.CreatingNewActorInstance(Logger);
-        metadata.Actor = ActorFactory.CreateActor(metadata.ActorType);
-        metadata.Actor.Context = new ActorContext(metadata.Reference);
-        LoggerMessages.ActoCreateWithSuccess(Logger);
+        Log.CreatingNewActorInstance(Logger);
+        child.Actor = ActorFactory.CreateActor(child.ActorType);
+        child.Actor.Context = new ActorContext(child.Reference);
+        Log.ActoCreateWithSuccess(Logger);
 
-        LoggerMessages.CreateNewProcess(Logger);
-        metadata.Process = new ActorProcess(metadata.Actor, metadata.Mailbox);
-        metadata.Process.Failure += HandleFailure;
-        metadata.Process.Start(
+        Log.CreateNewProcess(Logger);
+        child.Process = new ActorProcess(child.Actor, child.Mailbox);
+        child.Process.Failure += HandleFailure;
+        child.Process.Terminate += HandleTermination;
+
+        child.Process.Start(
             new LocalTellMessage(new InitializeActor()),
             new LocalTellMessage(new AfterRestartActor())
         );
-        LoggerMessages.ActorProcessStarted(Logger);
+        Log.ActorProcessStarted(Logger);
     }
 
     /// <summary>
@@ -553,7 +601,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the actor.</param>
     /// <returns>A task representing the reset operation.</returns>
-    protected virtual async ValueTask ResetMailboxAsync(ActorMetadata metadata)
+    protected virtual async ValueTask ResetMailboxAsync(Child metadata)
     {
         if (metadata.IsSupervisor)
         {
@@ -566,21 +614,21 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// </summary>
     /// <param name="metadata">The metadata of the actor being restarted.</param>
     /// <returns>A task representing the operation.</returns>
-    protected virtual async ValueTask BeforeRestartActorAsync(ActorMetadata metadata)
+    protected virtual async ValueTask BeforeRestartActorAsync(Child metadata)
     {
         try
         {
-            LoggerMessages.CallBeforeRestartActor(Logger);
+            Log.CallBeforeRestartActor(Logger);
             await metadata.Actor.BeforeRestartAsync();
-            LoggerMessages.SuccessBeforeRestartActor(Logger);
+            Log.SuccessBeforeRestartActor(Logger);
         }
         catch (Exception ex)
         {
-            LoggerMessages.ErrorDuringCallBeforeRestartActor(Logger, ex);
+            Log.ErrorDuringCallBeforeRestartActor(Logger, ex);
         }
     }
 
-    private static partial class LoggerMessages
+    private static partial class Log
     {
         [LoggerMessage(
             Level = LogLevel.Information,
@@ -599,6 +647,9 @@ public abstract partial class PartitionSupervisor<TActor>(
             Message = "Processing actor failure for supervised child"
         )]
         public static partial void ProcessingFailedActor(ILogger logger, Exception exception);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Failed Actor processed")]
+        public static partial void FailedActorProcessed(ILogger logger);
 
         [LoggerMessage(
             Level = LogLevel.Error,

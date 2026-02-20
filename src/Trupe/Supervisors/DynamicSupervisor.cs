@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Trupe.ActorReferences;
 using Trupe.Factories;
-using Trupe.Mailboxes;
+using Trupe.Messages;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;
@@ -34,66 +34,87 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
         CancellationToken cancellationToken = default
     )
     {
-        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
+        var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
 
-        if (metadata != null)
+        if (child != null)
         {
-            Actors = Actors.Remove(metadata);
+            Children = Children.Remove(child);
 
-            await StopActorAsync(metadata);
-            await DisposeObjectAsync(metadata.Actor);
-            await metadata.Process.DisposeAsync();
+            await StopActorAsync(child);
+            await DisposeObjectAsync(child.Actor);
+            await child.Process.DisposeAsync();
 
-            metadata.Actor = null!;
-            metadata.Process = null!;
+            child.Actor = null!;
+            child.Process = null!;
         }
     }
 
-    /// <inheritdoc />
-    protected override IActorReference AddChild(Type actorType, IMailbox mailbox)
+    /// <summary>
+    /// Adds a child actor by sending an <see cref="AddActor"/> command to this supervisor.
+    /// </summary>
+    /// <param name="specification">The specification defining the child actor to create.</param>
+    /// <returns>A reference to the newly created child actor.</returns>
+    protected override IActorReference AddChild(ChildSpecification specification)
     {
-        var actorRef = new LocalActorReference(mailbox);
-        Context.Self.Tell(new AddActor(actorType, mailbox, actorRef));
+        var actorRef = new LocalActorReference(specification.Mailbox);
+        Context.Self.Tell(new AddActor(specification, actorRef));
 
         return actorRef;
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// In addition to the base behavior, if the <see cref="Supervisor.Restart"/> policy is
-    /// <see cref="RestartPolicy.Transient"/>, the terminated actor is removed from the
-    /// supervised actors list instead of being restarted.
+    /// Removes temporary actors from the children list after failure.
     /// </remarks>
-    public override async ValueTask HandleAsync(
-        ActorTerminated message,
+    protected override async Task OnActorFailedAsync(
+        Child child,
+        IMessage message,
+        Exception exception,
         CancellationToken cancellationToken = default
     )
     {
-        await base.HandleAsync(message, cancellationToken);
+        await base.OnActorFailedAsync(child, message, exception, cancellationToken);
 
-        if (Restart == RestartPolicy.Transient)
+        if (child.RestartPolicy == RestartPolicy.Temporary)
         {
-            var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
-            if (metadata != null)
-            {
-                Actors = Actors.Remove(metadata);
-            }
+            Children = Children.Remove(child);
+
+            await DisposeObjectAsync(child.Actor);
+            child.Actor = null!;
+            child.Process = null!;
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Removes non-permanent actors from the children list after termination.
+    /// </remarks>
+    protected override async ValueTask OnActorTerminatedAsync(
+        Child child,
+        string? reason,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await base.OnActorTerminatedAsync(child, reason, cancellationToken);
+        if (child.RestartPolicy != RestartPolicy.Permanent)
+        {
+            Children = Children.Remove(child);
+
+            await DisposeObjectAsync(child.Actor);
+            child.Actor = null!;
+            child.Process = null!;
         }
     }
 
     /// <inheritdoc />
     protected override ValueTask<IActorReference> AddChildAsync(
-        Type actorType,
-        IMailbox mailbox,
+        ChildSpecification specification,
         CancellationToken cancellationToken = default
     )
     {
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = new LocalActorReference(specification.Mailbox);
 
-        var val = Context.Self.TellAsync(
-            new AddActor(actorType, mailbox, actorRef),
-            cancellationToken
-        );
+        var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
 
         if (val.IsCompletedSuccessfully)
         {
@@ -117,7 +138,7 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
     /// <param name="reference">The actor reference identifying the child actor to remove.</param>
     protected virtual void RemoveActor(IActorReference reference)
     {
-        var metadata = Actors.FirstOrDefault(x => x.Reference == reference);
+        var metadata = Children.FirstOrDefault(x => x.Reference == reference);
         if (metadata != null)
         {
             Context.Self.Tell(new RemoveChild(metadata.Actor));
@@ -135,10 +156,10 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
         CancellationToken cancellationToken = default
     )
     {
-        var metadata = Actors.FirstOrDefault(x => x.Reference == reference);
-        if (metadata != null)
+        var child = Children.FirstOrDefault(x => x.Reference == reference);
+        if (child != null)
         {
-            return Context.Self.TellAsync(new RemoveChild(metadata.Actor), cancellationToken);
+            return Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken);
         }
 
         return ValueTask.CompletedTask;
