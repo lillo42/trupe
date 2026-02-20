@@ -10,7 +10,6 @@ using Trupe.ActorReferences;
 using Trupe.Events;
 using Trupe.Exceptions;
 using Trupe.Factories;
-using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
 using Trupe.SystemMessages;
@@ -43,6 +42,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         ISupervisor,
         IHandleActorMessage<AddActor>,
         IHandleActorMessage<ActorFailed>,
+        IHandleActorMessage<ActorTerminated>,
         IAsyncDisposable
 {
     /// <summary>
@@ -77,17 +77,17 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// If this window elapses without a restart, the restart count is reset.
     /// Default is 5 seconds.
     /// </summary>
-    protected virtual TimeSpan RestartWindow { get; } = TimeSpan.FromSeconds(5);
+    protected virtual TimeSpan RestartWindow => TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Gets the list of supervised actor metadata.
+    /// Gets or sets the immutable list of child actors managed by this supervisor.
     /// </summary>
-    protected ImmutableList<ActorMetadata> Actors { get; private set; } = [];
+    protected ImmutableList<Child> Children { get; set; } = [];
 
     /// <summary>
     /// Gets the references to all child actors managed by this supervisor.
     /// </summary>
-    public IEnumerable<IActorReference> Children => Actors.Select(x => x.Reference);
+    IEnumerable<IActorReference> ISupervisor.Children => Children.Select(x => x.Reference);
 
     /// <inheritdoc />
     /// <remarks>
@@ -103,6 +103,32 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         _initialized = true;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Routes <see cref="AddActor"/>, <see cref="ActorFailed"/>, and <see cref="ActorTerminated"/>
+    /// messages to their respective typed handlers before falling back to the base implementation.
+    /// </remarks>
+    public override ValueTask HandleAsync(
+        object? message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (message is AddActor addActor)
+        {
+            return HandleAsync(addActor, cancellationToken);
+        }
+        else if (message is ActorFailed actorFailed)
+        {
+            return HandleAsync(actorFailed, cancellationToken);
+        }
+        else if (message is ActorTerminated actorTerminated)
+        {
+            return HandleAsync(actorTerminated, cancellationToken);
+        }
+
+        return base.HandleAsync(message, cancellationToken);
+    }
+
     /// <summary>
     /// Handles the <see cref="AddActor"/> command to create and register a new child actor.
     /// </summary>
@@ -111,7 +137,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A completed task.</returns>
     public virtual ValueTask HandleAsync(AddActor message, CancellationToken cancellationToken)
     {
-        CreateActor(message.ActorType, message.Mailbox, message.Reference);
+        CreateActor(message.Specification, message.Reference);
 
         return ValueTask.CompletedTask;
     }
@@ -131,46 +157,43 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         CancellationToken cancellationToken = default
     )
     {
-        var metadata = Actors.FirstOrDefault(x => x.Actor == message.Actor);
-        if (metadata == null)
+        Log.ProcessingFailedActor(Logger, message.Exception);
+
+        var children = Children.FirstOrDefault(x => x.Actor == message.Actor);
+        if (children == null)
         {
+            Log.ActorNotFound(Logger);
             return;
         }
 
-        ResetCounter(metadata);
+        await OnActorFailedAsync(children, message.Message, message.Exception, cancellationToken);
 
-        var action = GetFailureAction(metadata, message.Exception);
-        if (action == FailureAction.Restart)
+        Log.FailedActorProcessed(Logger, message.Exception);
+    }
+
+    /// <summary>
+    /// Handles the <see cref="ActorTerminated"/> command when a child actor is terminated.
+    /// </summary>
+    /// <param name="message">The termination information including the actor and reason.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the termination handling operation.</returns>
+    public virtual async ValueTask HandleAsync(
+        ActorTerminated message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        Log.ProcessingTerminatedActor(Logger, message.Reason);
+
+        var metadata = Children.FirstOrDefault(x => x.Actor == message.Actor);
+        if (metadata == null)
         {
-            await ApplyRestartAsync(metadata);
-        }
-        else if (action == FailureAction.Stop)
-        {
-            await ApplyStopAsync(metadata);
-        }
-        else if (action == FailureAction.Escalate)
-        {
-            await ApplyEscalateAsync(metadata, message.Message, message.Exception);
-        }
-        else
-        {
-            await ApplyResumeAsync(metadata);
+            Log.ActorNotFound(Logger);
+            return;
         }
 
-        if (message.Message is IAskMessage askMessage)
-        {
-            askMessage.SetCanceled();
-        }
+        await OnActorTerminatedAsync(metadata, message.Reason, cancellationToken);
 
-        if (
-            message.Exception is EscalateFailureException
-            {
-                ActorMessage: IAskMessage escalateAskMessage
-            }
-        )
-        {
-            escalateAskMessage.SetCanceled();
-        }
+        Log.FinishedProcessingTerminatedActor(Logger);
     }
 
     /// <inheritdoc />
@@ -181,16 +204,19 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         GC.SuppressFinalize(this);
 
-        foreach (var metadata in Actors)
+        foreach (var metadata in Children)
         {
+            await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+
+            await metadata.Process.DisposeAsync();
 
             metadata.Actor = null!;
             metadata.Process = null!;
             metadata.Metadata.Clear();
         }
 
-        Actors = [];
+        Children = [];
     }
 
     /// <summary>
@@ -201,29 +227,12 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild<
+    protected virtual IActorReference AddChild<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >()
         where TActor : IActor
     {
-        return AddChild<TActor>(new ChannelMailbox());
-    }
-
-    /// <summary>
-    /// Adds a child actor of the specified type with a custom mailbox.
-    /// </summary>
-    /// <typeparam name="TActor">The type of actor to create.</typeparam>
-    /// <param name="mailbox">The mailbox to use for the actor.</param>
-    /// <returns>A reference to the newly created child actor.</returns>
-    /// <exception cref="SupervisorAlreadyInitializedException">
-    /// Thrown if called after the supervisor has been initialized.
-    /// </exception>
-    protected IActorReference AddChild<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
-    >(IMailbox mailbox)
-        where TActor : IActor
-    {
-        return AddChild(typeof(TActor), mailbox);
+        return AddChild(typeof(TActor));
     }
 
     /// <summary>
@@ -234,21 +243,20 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild(Type actorType)
+    protected virtual IActorReference AddChild(Type actorType)
     {
-        return AddChild(actorType, new ChannelMailbox());
+        return AddChild(new ChildSpecification(actorType));
     }
 
     /// <summary>
-    /// Adds a child actor of the specified type with a custom mailbox.
+    /// Adds a child actor using the specified specification.
     /// </summary>
-    /// <param name="actorType">The type of actor to create.</param>
-    /// <param name="mailbox">The mailbox to use for the actor.</param>
+    /// <param name="specification">The specification defining the child actor to create.</param>
     /// <returns>A reference to the newly created child actor.</returns>
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected IActorReference AddChild(Type actorType, IMailbox mailbox)
+    protected virtual IActorReference AddChild(ChildSpecification specification)
     {
         if (_initialized)
         {
@@ -257,8 +265,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             );
         }
 
-        var actorRef = new LocalActorReference(mailbox);
-        Context.Self.Tell(new AddActor(actorType, mailbox, actorRef));
+        var actorRef = new LocalActorReference(specification.Mailbox);
+        Context.Self.Tell(new AddActor(specification, actorRef));
 
         return actorRef;
     }
@@ -272,30 +280,12 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync<
+    protected virtual ValueTask<IActorReference> AddChildAsync<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
     {
-        return AddChildAsync<TActor>(new ChannelMailbox(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously adds a child actor of the specified type with a custom mailbox.
-    /// </summary>
-    /// <typeparam name="TActor">The type of actor to create.</typeparam>
-    /// <param name="mailbox">The mailbox to use for the actor.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A reference to the newly created child actor.</returns>
-    /// <exception cref="SupervisorAlreadyInitializedException">
-    /// Thrown if called after the supervisor has been initialized.
-    /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
-    >(IMailbox mailbox, CancellationToken cancellationToken = default)
-        where TActor : IActor
-    {
-        return AddChildAsync(typeof(TActor), mailbox, cancellationToken);
+        return AddChildAsync(typeof(TActor), cancellationToken);
     }
 
     /// <summary>
@@ -307,27 +297,25 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync(
+    protected virtual ValueTask<IActorReference> AddChildAsync(
         Type actorType,
         CancellationToken cancellationToken = default
     )
     {
-        return AddChildAsync(actorType, new ChannelMailbox(), cancellationToken);
+        return AddChildAsync(new ChildSpecification(actorType), cancellationToken);
     }
 
     /// <summary>
-    /// Asynchronously adds a child actor of the specified type with a custom mailbox.
+    /// Asynchronously adds a child actor using the specified specification.
     /// </summary>
-    /// <param name="actorType">The type of actor to create.</param>
-    /// <param name="mailbox">The mailbox to use for the actor.</param>
+    /// <param name="specification">The specification defining the child actor to create.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A reference to the newly created child actor.</returns>
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected ValueTask<IActorReference> AddChildAsync(
-        Type actorType,
-        IMailbox mailbox,
+    protected virtual ValueTask<IActorReference> AddChildAsync(
+        ChildSpecification specification,
         CancellationToken cancellationToken = default
     )
     {
@@ -338,12 +326,9 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             );
         }
 
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = new LocalActorReference(specification.Mailbox);
 
-        var val = Context.Self.TellAsync(
-            new AddActor(actorType, mailbox, actorRef),
-            cancellationToken
-        );
+        var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
 
         if (val.IsCompletedSuccessfully)
         {
@@ -364,26 +349,26 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Resets the restart counter if the restart window has elapsed.
     /// </summary>
-    /// <param name="metadata">The actor metadata to check.</param>
-    protected virtual void ResetCounter(ActorMetadata metadata)
+    /// <param name="child">The child actor metadata to check.</param>
+    protected virtual void ResetCounter(Child child)
     {
         var now = DateTimeOffset.UtcNow;
-        if ((now - metadata.LastRestartTime) > RestartWindow)
+        if ((now - child.LastRestartTime) > RestartWindow)
         {
-            LoggerMessages.ResetingActorCounter(Logger, metadata.ActorType);
-            metadata.RestartCount = 0;
+            Log.ResettingActorRestartCounter(Logger, child.ActorType);
+            child.RestartCount = 0;
         }
     }
 
     /// <summary>
-    /// Determines the appropriate failure action for a failed actor.
+    /// Determines the appropriate failure action for a failed child actor.
     /// </summary>
-    /// <param name="metadata">The metadata of the failed actor.</param>
+    /// <param name="child">The metadata of the failed child actor.</param>
     /// <param name="exception">The exception that caused the failure.</param>
-    /// <returns>The action to take in response to the failure.</returns>
-    protected virtual FailureAction GetFailureAction(ActorMetadata metadata, Exception exception)
+    /// <returns>The <see cref="FailureAction"/> to take in response to the failure.</returns>
+    protected virtual FailureAction GetFailureAction(Child child, Exception exception)
     {
-        if (metadata.RestartCount >= MaxRestarts)
+        if (child.RestartCount >= MaxRestarts)
         {
             return FailureAction.Escalate;
         }
@@ -394,17 +379,17 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Applies the stop action to the failed actor(s) based on the supervision strategy.
     /// </summary>
-    /// <param name="metadata">The metadata of the failed actor.</param>
+    /// <param name="child">The metadata of the failed child actor.</param>
     /// <returns>A task representing the stop operation.</returns>
-    protected virtual async Task ApplyStopAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyStopAsync(Child child)
     {
         if (Strategy == Strategy.OneForOne)
         {
-            await StopActorAsync(metadata);
+            await StopActorAsync(child);
         }
         else if (Strategy == Strategy.AllForOne)
         {
-            await Task.WhenAll(Actors.Select(StopActorAsync));
+            await Task.WhenAll(Children.Select(StopActorAsync));
         }
     }
 
@@ -413,41 +398,47 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// </summary>
     /// <param name="metadata">The metadata of the actor to stop.</param>
     /// <returns>A task representing the stop operation.</returns>
-    protected virtual async Task StopActorAsync(ActorMetadata metadata)
+    protected virtual async Task StopActorAsync(Child metadata)
     {
+        Log.StoppingActor(Logger);
         metadata.Process.Failure -= HandleFailure;
+        metadata.Process.Terminate -= HandleTermination;
         await metadata.Process.StopAsync();
+        Log.ActorStopped(Logger);
     }
 
     /// <summary>
     /// Applies the resume action, allowing the actor to continue processing messages.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor to resume.</param>
+    /// <param name="child">The metadata of the actor to resume.</param>
     /// <returns>A task representing the resume operation.</returns>
-    protected virtual async Task ApplyResumeAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyResumeAsync(Child child)
     {
-        await metadata.Process.StopAsync();
-        metadata.Process.Start();
+        Log.ResumingActor(Logger);
+        await child.Process.StopAsync();
+        child.Process.Start();
+        Log.ActorResumed(Logger);
     }
 
     /// <summary>
-    /// Escalates the failure to the parent supervisor by throwing an exception.
+    /// Escalates the failure to the parent supervisor by throwing an <see cref="EscalateFailureException"/>.
     /// </summary>
-    /// <param name="metadata">The metadata of the failed actor.</param>
+    /// <param name="child">The metadata of the failed child actor.</param>
     /// <param name="message">The message that caused the failure.</param>
     /// <param name="exception">The original exception.</param>
     /// <returns>A task representing the escalation operation.</returns>
-    /// <exception cref="EscalateFailureException">Always thrown to escalate to parent.</exception>
+    /// <exception cref="EscalateFailureException">Always thrown to escalate to the parent supervisor.</exception>
     protected virtual async Task ApplyEscalateAsync(
-        ActorMetadata metadata,
+        Child child,
         IMessage message,
         Exception exception
     )
     {
-        await metadata.Process.StopAsync();
+        Log.EscalatingError(Logger);
+        await child.Process.StopAsync();
         throw new EscalateFailureException(
             "Unable to handle actor failure",
-            metadata.Reference,
+            child.Reference,
             message,
             exception
         );
@@ -456,62 +447,150 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Applies the restart action to the failed actor(s) based on the supervision strategy.
     /// </summary>
-    /// <param name="metadata">The metadata of the failed actor.</param>
+    /// <param name="child">The metadata of the failed child actor.</param>
     /// <returns>A task representing the restart operation.</returns>
-    protected virtual async Task ApplyRestartAsync(ActorMetadata metadata)
+    protected virtual async Task ApplyRestartAsync(Child child)
     {
-        metadata.RestartCount++;
-        metadata.LastRestartTime = DateTimeOffset.UtcNow;
+        child.RestartCount++;
+        child.LastRestartTime = DateTimeOffset.UtcNow;
 
         if (Strategy == Strategy.OneForOne)
         {
-            await ResetActorAsync(metadata);
+            await ResetActorAsync(child);
         }
         else if (Strategy == Strategy.AllForOne)
         {
-            await Task.WhenAll(Actors.Select(ResetActorAsync));
+            await Task.WhenAll(Children.Select(ResetActorAsync));
         }
     }
 
     /// <summary>
-    /// Resets an actor by stopping, disposing, and recreating it.
+    /// Called when a child actor is terminated. Restarts permanent actors or terminates non-permanent ones.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor to reset.</param>
-    /// <returns>A task representing the reset operation.</returns>
-    protected virtual async Task ResetActorAsync(ActorMetadata metadata)
+    /// <param name="child">The metadata of the terminated child actor.</param>
+    /// <param name="reason">The optional reason for termination.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the termination handling operation.</returns>
+    protected virtual async ValueTask OnActorTerminatedAsync(
+        Child child,
+        string? reason,
+        CancellationToken cancellationToken = default
+    )
     {
-        await StopActorAsync(metadata);
-        await BeforeRestartActorAsync(metadata);
+        if (child.RestartPolicy == RestartPolicy.Permanent)
+        {
+            await ResetActorAsync(child);
+        }
+        else
+        {
+            child.Reference.Terminate(reason);
+        }
+    }
 
-        await DisposeObjectAsync(metadata.Actor);
+    /// <summary>
+    /// Called when a child actor fails. Applies the appropriate failure action based on restart policy and strategy.
+    /// </summary>
+    /// <param name="child">The metadata of the failed child actor.</param>
+    /// <param name="message">The message that was being processed when the failure occurred.</param>
+    /// <param name="exception">The exception that caused the failure.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the failure handling operation.</returns>
+    protected virtual async Task OnActorFailedAsync(
+        Child child,
+        IMessage message,
+        Exception exception,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (child.RestartPolicy == RestartPolicy.Temporary)
+        {
+            await ApplyStopAsync(child);
+            return;
+        }
 
-        await ResetMailboxAsync(metadata);
+        ResetCounter(child);
 
-        metadata.Actor = ActorFactory.CreateActor(metadata.ActorType);
-        metadata.Actor.Context = new ActorContext(metadata.Reference);
+        var action = GetFailureAction(child, exception);
+        Log.GoingToApplyFailureAction(Logger, action, Strategy);
 
-        metadata.Process = new ActorProcess(metadata.Actor, metadata.Mailbox);
-        metadata.Process.Failure += HandleFailure;
-        metadata.Process.Start(
+        if (action == FailureAction.Restart)
+        {
+            await ApplyRestartAsync(child);
+        }
+        else if (action == FailureAction.Stop)
+        {
+            await ApplyStopAsync(child);
+        }
+        else if (action == FailureAction.Escalate)
+        {
+            await ApplyEscalateAsync(child, message, exception);
+        }
+        else
+        {
+            await ApplyResumeAsync(child);
+        }
+
+        if (message is IAskMessage askMessage)
+        {
+            Log.CancelAskMessage(Logger);
+            askMessage.SetCanceled();
+        }
+
+        if (exception is EscalateFailureException { ActorMessage: IAskMessage escalateAskMessage })
+        {
+            Log.CancelAskMessage(Logger);
+            escalateAskMessage.SetCanceled();
+        }
+    }
+
+    /// <summary>
+    /// Resets an actor by stopping, disposing, and recreating it with a fresh instance.
+    /// </summary>
+    /// <param name="child">The metadata of the actor to reset.</param>
+    /// <returns>A task representing the reset operation.</returns>
+    protected virtual async Task ResetActorAsync(Child child)
+    {
+        Log.ResettingActor(Logger);
+        await StopActorAsync(child);
+        await BeforeRestartActorAsync(child);
+
+        await DisposeObjectAsync(child.Actor);
+        await ResetMailboxAsync(child);
+
+        Log.CreatingNewActorInstance(Logger);
+        child.Actor = ActorFactory.CreateActor(child.ActorType);
+        child.Actor.Context = new ActorContext(child.Reference);
+        Log.ActorCreatedWithSuccess(Logger);
+
+        await child.Process.DisposeAsync();
+        Log.CreateNewProcess(Logger);
+        child.Process = new ActorProcess(child.Actor, child.Mailbox);
+        child.Process.Failure += HandleFailure;
+        child.Process.Terminate += HandleTermination;
+
+        child.Process.Start(
             new LocalTellMessage(new InitializeActor()),
             new LocalTellMessage(new AfterRestartActor())
         );
+        Log.ActorProcessStarted(Logger);
     }
 
     /// <summary>
     /// Calls the actor's <see cref="IActor.BeforeRestartAsync"/> method before restarting.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor being restarted.</param>
+    /// <param name="child">The metadata of the actor being restarted.</param>
     /// <returns>A task representing the operation.</returns>
-    protected virtual async ValueTask BeforeRestartActorAsync(ActorMetadata metadata)
+    protected virtual async ValueTask BeforeRestartActorAsync(Child child)
     {
         try
         {
-            await metadata.Actor.BeforeRestartAsync();
+            Log.CallBeforeRestartActor(Logger);
+            await child.Actor.BeforeRestartAsync();
+            Log.SuccessBeforeRestartActor(Logger);
         }
         catch (Exception ex)
         {
-            LoggerMessages.WarningRestartingActor(Logger, metadata.ActorType, ex);
+            Log.ErrorDuringCallBeforeRestartActor(Logger, ex);
         }
     }
 
@@ -522,7 +601,18 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="args">The failure event arguments.</param>
     protected virtual void HandleFailure(object? sender, ActorFailureEventArgs args)
     {
+        Log.HandlingFailedActor(Logger, args.Exception);
         Context.Self.Tell(new ActorFailed(args.Actor, args.Message, args.Exception));
+    }
+
+    /// <summary>
+    /// Handles termination events from child actor processes.
+    /// </summary>
+    /// <param name="sender">The source of the event.</param>
+    /// <param name="args">The termination event arguments.</param>
+    protected virtual void HandleTermination(object? sender, ActorTerminateEventArgs args)
+    {
+        Context.Self.Tell(new ActorTerminated(args.Actor, args.Reason));
     }
 
     /// <summary>
@@ -547,37 +637,42 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Resets the mailbox for a supervisor actor during restart.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor.</param>
+    /// <param name="child">The metadata of the actor.</param>
     /// <returns>A task representing the reset operation.</returns>
-    protected virtual async ValueTask ResetMailboxAsync(ActorMetadata metadata)
+    protected virtual async ValueTask ResetMailboxAsync(Child child)
     {
-        if (metadata.IsSupervisor)
+        if (child.IsSupervisor)
         {
-            await metadata.Mailbox.CleanAsync();
+            await child.Mailbox.CleanAsync();
         }
     }
 
     /// <summary>
-    /// Creates and starts a new child actor.
+    /// Creates a new child actor from the given specification and registers it in the children list.
     /// </summary>
-    /// <param name="actorType">The type of actor to create.</param>
-    /// <param name="mailbox">The mailbox for the actor.</param>
-    /// <param name="reference">The actor reference.</param>
-    /// <returns>The metadata for the created actor.</returns>
-    protected virtual ActorMetadata CreateActor(
-        Type actorType,
-        IMailbox mailbox,
+    /// <param name="specification">The specification defining the actor to create.</param>
+    /// <param name="reference">The local actor reference to associate with the child.</param>
+    /// <returns>The metadata for the created child actor.</returns>
+    protected virtual Child CreateActor(
+        ChildSpecification specification,
         LocalActorReference reference
     )
     {
-        var actor = ActorFactory.CreateActor(actorType);
+        var actor = ActorFactory.CreateActor(specification.ActorType);
         actor.Context = new ActorContext(reference);
 
-        var process = new ActorProcess(actor, mailbox);
+        var process = new ActorProcess(actor, specification.Mailbox);
         process.Failure += HandleFailure;
+        process.Terminate += HandleTermination;
 
-        var metadata = new ActorMetadata(actor, mailbox, process, reference);
-        Actors = Actors.Add(metadata);
+        var metadata = new Child(
+            actor,
+            specification.Mailbox,
+            process,
+            reference,
+            specification.RestartPolicy
+        );
+        Children = Children.Add(metadata);
 
         process.Start(new LocalTellMessage(new InitializeActor()));
 
@@ -599,7 +694,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         CancellationToken cancellationToken = default
     )
     {
-        foreach (var metadata in Actors)
+        foreach (var metadata in Children)
         {
             await StopActorAsync(metadata);
 
@@ -610,25 +705,124 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             metadata.Metadata.Clear();
         }
 
-        Actors = [];
+        Children = [];
     }
 
-    private static partial class LoggerMessages
+    private static partial class Log
     {
         [LoggerMessage(
-            Level = LogLevel.Debug,
-            Message = "Resetting actor counter for actor type {ActorType}."
+            Level = LogLevel.Information,
+            Message = "Received failure notification from child actor"
         )]
-        public static partial void ResetingActorCounter(ILogger logger, Type actorType);
+        public static partial void HandlingFailedActor(ILogger logger, Exception exception);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Processing actor failure for supervised child"
+        )]
+        public static partial void ProcessingFailedActor(ILogger logger, Exception exception);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Failed actor processed")]
+        public static partial void FailedActorProcessed(ILogger logger, Exception exception);
+
+        [LoggerMessage(
+            Level = LogLevel.Error,
+            Message = "Failed actor not found in supervised children list"
+        )]
+        public static partial void ActorNotFound(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Canceling pending ask message due to actor failure"
+        )]
+        public static partial void CancelAskMessage(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Applying failure action '{FailureAction}' using '{Strategy}' strategy"
+        )]
+        public static partial void GoingToApplyFailureAction(
+            ILogger logger,
+            FailureAction failureAction,
+            Strategy strategy
+        );
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Resuming actor after failure")]
+        public static partial void ResumingActor(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Actor resumed and ready to process messages"
+        )]
+        public static partial void ActorResumed(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
+        public static partial void ResettingActor(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
+        public static partial void ActorRestarted(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Stopping actor process")]
+        public static partial void StoppingActor(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor process stopped successfully")]
+        public static partial void ActorStopped(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Invoking BeforeRestartAsync on actor")]
+        public static partial void CallBeforeRestartActor(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "BeforeRestartAsync completed successfully"
+        )]
+        public static partial void SuccessBeforeRestartActor(ILogger logger);
 
         [LoggerMessage(
             Level = LogLevel.Warning,
-            Message = "Restarting actor of type {ActorType} due to exception"
+            Message = "BeforeRestartAsync threw an exception, ignoring and continuing with restart"
         )]
-        public static partial void WarningRestartingActor(
+        public static partial void ErrorDuringCallBeforeRestartActor(
             ILogger logger,
-            Type actorType,
             Exception exception
         );
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Creating new actor instance for restart")]
+        public static partial void CreatingNewActorInstance(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
+        public static partial void ActorCreatedWithSuccess(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Creating and starting actor process with InitializeActor and AfterRestartActor messages"
+        )]
+        public static partial void CreateNewProcess(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Actor process started and processing messages"
+        )]
+        public static partial void ActorProcessStarted(ILogger logger);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
+        public static partial void EscalatingError(ILogger logger);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Resetting restart counter for actor type '{ActorType}' after restart window elapsed"
+        )]
+        public static partial void ResettingActorRestartCounter(ILogger logger, Type actorType);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Processing termination ({Reason}) of child actor"
+        )]
+        public static partial void ProcessingTerminatedActor(ILogger logger, string? reason);
+
+        [LoggerMessage(
+            Level = LogLevel.Trace,
+            Message = "Finished processing termination of child actor"
+        )]
+        public static partial void FinishedProcessingTerminatedActor(ILogger logger);
     }
 }
