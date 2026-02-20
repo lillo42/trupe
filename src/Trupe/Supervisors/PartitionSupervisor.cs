@@ -223,7 +223,10 @@ public abstract partial class PartitionSupervisor<TActor>(
 
         foreach (var metadata in Children)
         {
+            await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+
+            await metadata.Process.DisposeAsync();
 
             metadata.Actor = null!;
             metadata.Process = null!;
@@ -242,7 +245,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual IActorReference GetActorReference<TKey>(TKey key)
         where TKey : notnull
     {
-        var hash = GetHashcode(key);
+        var hash = Math.Abs(GetHashcode(key));
 
         return Children[hash % Children.Count].Reference;
     }
@@ -584,6 +587,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         child.Actor.Context = new ActorContext(child.Reference);
         Log.ActoCreateWithSuccess(Logger);
 
+        await child.Process.DisposeAsync();
         Log.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
         child.Process.Failure += HandleFailure;

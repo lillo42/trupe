@@ -17,19 +17,13 @@ public class DynamicSupervisorTest
 {
     #region Test Helpers
 
-    private class TestDynamicSupervisor : DynamicSupervisor
+    private class TestDynamicSupervisor(
+        IActorFactory actorFactory,
+        ILogger logger,
+        Func<CancellationToken, ValueTask>? onInitialize = null
+    ) : DynamicSupervisor(actorFactory, logger)
     {
-        private readonly Func<CancellationToken, ValueTask>? _onInitialize;
-
-        public TestDynamicSupervisor(
-            IActorFactory actorFactory,
-            ILogger logger,
-            Func<CancellationToken, ValueTask>? onInitialize = null
-        )
-            : base(actorFactory, logger)
-        {
-            _onInitialize = onInitialize;
-        }
+        private readonly Func<CancellationToken, ValueTask>? _onInitialize = onInitialize;
 
         protected override ValueTask OnInitializeAsync(
             CancellationToken cancellationToken = default
@@ -122,7 +116,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §1 Strategy
+    #region Strategy
 
     [Test]
     public async Task Strategy_Should_AlwaysBeOneForOne()
@@ -136,7 +130,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §2 HandleAsync(RemoveChild)
+    #region HandleAsync(RemoveChild)
 
     [Test]
     public async Task HandleRemoveChild_Should_RemoveFromChildren_StopDispose_NullRefs()
@@ -221,7 +215,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §3 AddChild Override
+    #region AddChild Override
 
     [Test]
     public async Task AddChild_WithSpec_Should_ReturnLocalActorReference()
@@ -298,7 +292,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §4 AddChildAsync Override
+    #region AddChildAsync Override
 
     [Test]
     public async Task AddChildAsync_WithSpec_Should_ReturnLocalActorReference()
@@ -358,7 +352,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §5 OnActorFailedAsync Override
+    #region OnActorFailedAsync Override
 
     [Test]
     public async Task OnActorFailed_TemporaryActor_Should_RemoveFromChildren_DisposeAndNull()
@@ -381,11 +375,8 @@ public class DynamicSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert — removed from children, actor disposed, refs nulled
@@ -416,11 +407,8 @@ public class DynamicSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert — still in children (restarted by base)
@@ -448,11 +436,8 @@ public class DynamicSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert — still in children (restarted by base)
@@ -461,7 +446,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §6 OnActorTerminatedAsync Override
+    #region OnActorTerminatedAsync Override
 
     [Test]
     public async Task OnActorTerminated_TransientActor_Should_RemoveFromChildren_DisposeAndNull()
@@ -483,9 +468,7 @@ public class DynamicSupervisorTest
         var actor = (DisposableActor)child.Actor;
 
         // Act
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert
         await Assert.That(supervisor.Children.Count).IsEqualTo(0);
@@ -514,9 +497,7 @@ public class DynamicSupervisorTest
         var actor = (DisposableActor)child.Actor;
 
         // Act
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert
         await Assert.That(supervisor.Children.Count).IsEqualTo(0);
@@ -545,9 +526,7 @@ public class DynamicSupervisorTest
         var child = supervisor.Children[0];
 
         // Act
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert — still in children (restarted by base)
         await Assert.That(supervisor.Children.Count).IsEqualTo(1);
@@ -555,7 +534,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §7 RemoveActor
+    #region RemoveActor
 
     [Test]
     public async Task RemoveActor_Should_SendRemoveChildToSelf()
@@ -618,7 +597,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §8 RemoveActorAsync
+    #region RemoveActorAsync
 
     [Test]
     public async Task RemoveActorAsync_Should_SendRemoveChildToSelf()
@@ -662,7 +641,7 @@ public class DynamicSupervisorTest
 
     #endregion
 
-    #region §9 Integration
+    #region Integration
 
     [Test]
     public async Task Integration_RemoveChild_Should_FullyCleanupRunningActor()

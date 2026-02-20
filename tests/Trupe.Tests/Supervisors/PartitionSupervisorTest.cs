@@ -62,35 +62,26 @@ public class PartitionSupervisorTest
 
     private class SimpleSupervisorActor : Actor, ISupervisor
     {
-        public IEnumerable<IActorReference> Children => Enumerable.Empty<IActorReference>();
+        public IEnumerable<IActorReference> Children => [];
     }
 
-    private class TestPartitionSupervisor : PartitionSupervisor<SimpleActor>
+    private class TestPartitionSupervisor(
+        IActorFactory actorFactory,
+        ILogger logger,
+        int workers = 3,
+        Strategy? strategy = null,
+        int? maxRestarts = null,
+        TimeSpan? restartWindow = null,
+        RestartPolicy? defaultRestartPolicy = null,
+        Func<CancellationToken, ValueTask>? onInitialize = null
+    ) : PartitionSupervisor<SimpleActor>(actorFactory, logger, workers)
     {
-        private readonly Strategy _strategy;
-        private readonly int _maxRestarts;
-        private readonly TimeSpan _restartWindow;
-        private readonly RestartPolicy _defaultRestartPolicy;
-        private readonly Func<CancellationToken, ValueTask>? _onInitialize;
-
-        public TestPartitionSupervisor(
-            IActorFactory actorFactory,
-            ILogger logger,
-            int workers = 3,
-            Strategy? strategy = null,
-            int? maxRestarts = null,
-            TimeSpan? restartWindow = null,
-            RestartPolicy? defaultRestartPolicy = null,
-            Func<CancellationToken, ValueTask>? onInitialize = null
-        )
-            : base(actorFactory, logger, workers)
-        {
-            _strategy = strategy ?? Strategy.OneForOne;
-            _maxRestarts = maxRestarts ?? 3;
-            _restartWindow = restartWindow ?? TimeSpan.FromSeconds(5);
-            _defaultRestartPolicy = defaultRestartPolicy ?? RestartPolicy.Permanent;
-            _onInitialize = onInitialize;
-        }
+        private readonly Strategy _strategy = strategy ?? Strategy.OneForOne;
+        private readonly int _maxRestarts = maxRestarts ?? 3;
+        private readonly TimeSpan _restartWindow = restartWindow ?? TimeSpan.FromSeconds(5);
+        private readonly RestartPolicy _defaultRestartPolicy =
+            defaultRestartPolicy ?? RestartPolicy.Permanent;
+        private readonly Func<CancellationToken, ValueTask>? _onInitialize = onInitialize;
 
         protected override Strategy Strategy => _strategy;
         protected override int MaxRestarts => _maxRestarts;
@@ -113,10 +104,10 @@ public class PartitionSupervisorTest
             base.CreateActor(specification);
 
         public new IActorReference GetActorReference<TKey>(TKey key)
-            where TKey : notnull => base.GetActorReference<TKey>(key);
+            where TKey : notnull => base.GetActorReference(key);
 
         public new int GetHashcode<TKey>(TKey key)
-            where TKey : notnull => base.GetHashcode<TKey>(key);
+            where TKey : notnull => base.GetHashcode(key);
 
         public new void ResetCounter(Child child) => base.ResetCounter(child);
 
@@ -124,13 +115,11 @@ public class PartitionSupervisorTest
             base.GetFailureAction(child, exception);
 
         public new Task ApplyStopAsync(Child child) => base.ApplyStopAsync(child);
+
         public new Task ApplyResumeAsync(Child child) => base.ApplyResumeAsync(child);
 
-        public new Task ApplyEscalateAsync(
-            Child child,
-            IMessage message,
-            Exception exception
-        ) => base.ApplyEscalateAsync(child, message, exception);
+        public new Task ApplyEscalateAsync(Child child, IMessage message, Exception exception) =>
+            base.ApplyEscalateAsync(child, message, exception);
 
         public new Task ApplyRestartAsync(Child child) => base.ApplyRestartAsync(child);
 
@@ -196,7 +185,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §1 Initialization
+    #region Initialization
 
     [Test]
     public async Task InitializeAsync_Should_CreateExactlyWorkersActors()
@@ -251,15 +240,13 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         // Assert
-        await Assert.That(supervisor.Children[0].RestartPolicy)
-            .IsEqualTo(RestartPolicy.Transient);
-        await Assert.That(supervisor.Children[1].RestartPolicy)
-            .IsEqualTo(RestartPolicy.Transient);
+        await Assert.That(supervisor.Children[0].RestartPolicy).IsEqualTo(RestartPolicy.Transient);
+        await Assert.That(supervisor.Children[1].RestartPolicy).IsEqualTo(RestartPolicy.Transient);
     }
 
     #endregion
 
-    #region §2 Message Routing
+    #region Message Routing
 
     [Test]
     public async Task HandleAsync_Should_RouteActorFailedMessage()
@@ -273,11 +260,8 @@ public class PartitionSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert - factory called: 1 (init) + 1 (restart) = 2
@@ -295,9 +279,7 @@ public class PartitionSupervisorTest
         var child = supervisor.Children[0];
 
         // Act - permanent actor should be reset
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert - factory called: 1 (init) + 1 (reset) = 2
         factory.Received(2).CreateActor(typeof(SimpleActor));
@@ -316,7 +298,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §3 Creating Actors
+    #region Creating Actors
 
     [Test]
     public async Task CreateActor_Should_CreateViaFactory_SetContext_AddToChildren()
@@ -366,11 +348,8 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         // Act & Assert
-        var action = () =>
-            supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
-        await Assert
-            .That(action)
-            .Throws<SupervisorAlreadyInitializedException>();
+        var action = () => supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        await Assert.That(action).Throws<SupervisorAlreadyInitializedException>();
     }
 
     [Test]
@@ -382,14 +361,13 @@ public class PartitionSupervisorTest
         supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
 
         // Act & Assert - workers limit reached
-        var action = () =>
-            supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        var action = () => supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
         await Assert.That(action).Throws<TooManyWorkerException>();
     }
 
     #endregion
 
-    #region §4 Partition Routing
+    #region Partition Routing
 
     [Test]
     public async Task GetActorReference_SameKey_Should_ReturnSameReference()
@@ -403,7 +381,11 @@ public class PartitionSupervisorTest
         int safeKey = 0;
         for (var i = 0; i < 1000; i++)
         {
-            if (supervisor.GetHashcode(i) >= 0) { safeKey = i; break; }
+            if (supervisor.GetHashcode(i) >= 0)
+            {
+                safeKey = i;
+                break;
+            }
         }
 
         var ref1 = supervisor.GetActorReference(safeKey);
@@ -452,7 +434,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §5 Actor Failure Handling
+    #region Actor Failure Handling
 
     [Test]
     public async Task HandleActorFailed_OneForOne_Should_RestartOnlyFailedActor()
@@ -470,11 +452,8 @@ public class PartitionSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert - factory: 2 (init) + 1 (restart) = 3
@@ -497,11 +476,8 @@ public class PartitionSupervisorTest
 
         // Act
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
         );
 
         // Assert - factory: 2 (init) + 2 (restart all) = 4
@@ -569,11 +545,8 @@ public class PartitionSupervisorTest
 
         // Act & Assert — should not throw
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                unknownActor,
-                new LocalTellMessage("test"),
-                new Exception("fail")
-            )
+            (object)
+                new ActorFailed(unknownActor, new LocalTellMessage("test"), new Exception("fail"))
         );
     }
 
@@ -594,21 +567,19 @@ public class PartitionSupervisorTest
 
         // First failure - restart
         await supervisor.HandleAsync(
-            (object)new ActorFailed(
-                child.Actor,
-                new LocalTellMessage("test"),
-                new Exception("fail1")
-            )
+            (object)
+                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail1"))
         );
 
         // Second failure - should escalate (child.Actor is now the new actor)
         var action = async () =>
             await supervisor.HandleAsync(
-                (object)new ActorFailed(
-                    child.Actor,
-                    new LocalTellMessage("test"),
-                    new Exception("fail2")
-                )
+                (object)
+                    new ActorFailed(
+                        child.Actor,
+                        new LocalTellMessage("test"),
+                        new Exception("fail2")
+                    )
             );
 
         await Assert.That(action).Throws<EscalateFailureException>();
@@ -616,7 +587,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §6 Actor Termination Handling
+    #region Actor Termination Handling
 
     [Test]
     public async Task HandleActorTerminated_PermanentActor_Should_ResetActor()
@@ -629,9 +600,7 @@ public class PartitionSupervisorTest
         var child = supervisor.Children[0];
 
         // Act
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert - factory: 1 (init) + 1 (reset) = 2
         factory.Received(2).CreateActor(typeof(SimpleActor));
@@ -654,9 +623,7 @@ public class PartitionSupervisorTest
         child.Reference.OnTerminate += (_, _) => terminateCalled = true;
 
         // Act
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(child.Actor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
 
         // Assert
         await Assert.That(terminateCalled).IsTrue();
@@ -673,9 +640,7 @@ public class PartitionSupervisorTest
         var unknownActor = new SimpleActor();
 
         // Act & Assert — should not throw
-        await supervisor.HandleAsync(
-            (object)new ActorTerminated(unknownActor, "done")
-        );
+        await supervisor.HandleAsync((object)new ActorTerminated(unknownActor, "done"));
     }
 
     #endregion
@@ -750,7 +715,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §9 Apply Actions
+    #region Apply Actions
 
     [Test]
     public async Task ApplyStopAsync_OneForOne_Should_StopOnlyFailedActor()
@@ -923,7 +888,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §11 BeforeRestart Actor
+    #region BeforeRestart Actor
 
     [Test]
     public async Task BeforeRestartActorAsync_Should_CallBeforeRestartOnActor()
@@ -948,7 +913,8 @@ public class PartitionSupervisorTest
     {
         // Arrange
         var actor = Substitute.For<IActor>();
-        actor.BeforeRestartAsync(Arg.Any<CancellationToken>())
+        actor
+            .BeforeRestartAsync(Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromException(new InvalidOperationException("boom")));
 
         var factory = Substitute.For<IActorFactory>();
@@ -964,7 +930,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §12 Event Handlers
+    #region Event Handlers
 
     [Test]
     public async Task HandleFailure_Should_SendActorFailedToSelf()
@@ -1022,7 +988,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §13 Disposal
+    #region Disposal
 
     [Test]
     public async Task DisposeAsync_Should_DisposeAllChildrenAndClearList()
@@ -1086,7 +1052,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §14 Supervisor BeforeRestart
+    #region Supervisor BeforeRestart
 
     [Test]
     public async Task BeforeRestartAsync_Should_StopAndDisposeAllChildren()
@@ -1111,7 +1077,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §15 ResetMailboxAsync
+    #region ResetMailboxAsync
 
     [Test]
     public async Task ResetMailboxAsync_Should_CleanMailbox_WhenChildIsSupervisor()
@@ -1148,13 +1114,7 @@ public class PartitionSupervisorTest
         simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
-        var child = new Child(
-            simpleActor,
-            mailbox,
-            process,
-            reference,
-            RestartPolicy.Permanent
-        );
+        var child = new Child(simpleActor, mailbox, process, reference, RestartPolicy.Permanent);
 
         // Act
         await supervisor.ResetMailboxAsync(child);
@@ -1165,7 +1125,7 @@ public class PartitionSupervisorTest
 
     #endregion
 
-    #region §16 ISupervisor.Children
+    #region ISupervisor.Children
 
     [Test]
     public async Task ISupervisorChildren_Should_ReturnActorReferences()

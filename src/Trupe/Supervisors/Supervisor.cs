@@ -206,7 +206,10 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
         foreach (var metadata in Children)
         {
+            await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+
+            await metadata.Process.DisposeAsync();
 
             metadata.Actor = null!;
             metadata.Process = null!;

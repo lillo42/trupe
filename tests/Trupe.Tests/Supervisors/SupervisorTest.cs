@@ -196,7 +196,7 @@ public class SupervisorTest
 
     #endregion
 
-    #region §1 Initialization
+    #region Initialization
 
     [Test]
     public async Task InitializeAsync_Should_CallOnInitializeAsync()
@@ -232,7 +232,7 @@ public class SupervisorTest
 
     #endregion
 
-    #region §2 Message Routing
+    #region Message Routing
 
     [Test]
     public async Task HandleAsync_Should_RouteAddActorMessage()
@@ -314,7 +314,7 @@ public class SupervisorTest
 
     #endregion
 
-    #region §3 Adding Children
+    #region Adding Children
 
     [Test]
     public async Task AddChild_WithType_Should_WorkBeforeInitialization()
@@ -407,7 +407,7 @@ public class SupervisorTest
 
     #endregion
 
-    #region §4 Creating Actors
+    #region Creating Actors
 
     [Test]
     public async Task CreateActor_Should_CreateViaFactory_SetContext_AddToChildren()
@@ -424,7 +424,7 @@ public class SupervisorTest
         var child = supervisor.CreateActor(spec, reference);
 
         // Assert
-        await Assert.That(supervisor.Children.Count).IsEqualTo(1);
+        await Assert.That(supervisor.Children).Count().IsEqualTo(1);
         await Assert.That(child.Actor).IsSameReferenceAs(childActor);
         await Assert.That(childActor.Context).IsNotNull();
         factory.Received(1).CreateActor(typeof(SimpleActor));
@@ -471,7 +471,7 @@ public class SupervisorTest
         );
 
         // Assert
-        await Assert.That(supervisor.Children.Count).IsEqualTo(2);
+        await Assert.That(supervisor.Children).Count().IsEqualTo(2);
     }
 
     [Test]
@@ -556,7 +556,7 @@ public class SupervisorTest
 
     #endregion
 
-    #region §5 Actor Failure Handling
+    #region Actor Failure Handling
 
     [Test]
     public async Task HandleActorFailed_PermanentActor_OneForOne_Should_RestartActor()
@@ -647,7 +647,7 @@ public class SupervisorTest
     [Test]
     public async Task HandleActorFailed_TransientActor_Should_RestartOnFailure()
     {
-        // Arrange
+        // ACountrrange
         var factory = Substitute.For<IActorFactory>();
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
