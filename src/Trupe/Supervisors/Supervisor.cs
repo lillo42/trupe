@@ -6,13 +6,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Exceptions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
+using Trupe.Abstractions.SystemMessages;
 using Trupe.ActorReferences;
-using Trupe.Events;
-using Trupe.Exceptions;
-using Trupe.Factories;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
-using Trupe.SystemMessages;
 
 namespace Trupe.Supervisors;
 
@@ -137,7 +140,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A completed task.</returns>
     public virtual ValueTask HandleAsync(AddActor message, CancellationToken cancellationToken)
     {
-        CreateActor(message.Specification, message.Reference);
+        CreateActor(message.Specification, (LocalActorReference)message.Reference);
 
         return ValueTask.CompletedTask;
     }
@@ -654,7 +657,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="reference">The local actor reference to associate with the child.</param>
     /// <returns>The metadata for the created child actor.</returns>
     protected virtual Child CreateActor(
-        ChildSpecification specification,
+        IChildSpecification specification,
         LocalActorReference reference
     )
     {

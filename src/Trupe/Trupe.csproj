@@ -9,4 +9,8 @@
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trupe.Abstractions\Trupe.Abstractions.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,8 +1,6 @@
 <Solution>
-  <Configurations>
-    <Platform Name="Any CPU" />
-  </Configurations>
   <Folder Name="/src/">
+    <Project Path="src/Trupe.Abstractions/Trupe.Abstractions.csproj" />
     <Project Path="src/Trupe/Trupe.csproj" />
   </Folder>
   <Folder Name="/tests/">

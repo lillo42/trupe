@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Abstractions.Messages;
 using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;

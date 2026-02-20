@@ -1,5 +1,6 @@
 ﻿using System.Threading;
-using Trupe.Mailboxes;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Messages;
 
 namespace Trupe.Messages;
 

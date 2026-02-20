@@ -1,8 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Trupe.Events;
-using Trupe.Mailboxes;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Mailboxes;
 using Trupe.Messages;
 
 namespace Trupe.ActorReferences;

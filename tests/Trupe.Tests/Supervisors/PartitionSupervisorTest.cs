@@ -6,10 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Exceptions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Events;
-using Trupe.Exceptions;
-using Trupe.Factories;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors;
@@ -63,6 +67,8 @@ public class PartitionSupervisorTest
     private class SimpleSupervisorActor : Actor, ISupervisor
     {
         public IEnumerable<IActorReference> Children => [];
+
+        IEnumerable<IActorReference> ISupervisor.Children => throw new NotImplementedException();
     }
 
     private class TestPartitionSupervisor(

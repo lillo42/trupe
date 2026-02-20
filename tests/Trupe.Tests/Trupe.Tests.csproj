@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Trupe\Trupe.csproj" />
+    <ProjectReference Include="..\..\src\Trupe.Abstractions\Trupe.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

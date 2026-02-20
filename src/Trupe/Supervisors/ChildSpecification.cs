@@ -1,4 +1,6 @@
 using System;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Supervisors;
 using Trupe.Mailboxes;
 
 namespace Trupe.Supervisors;
@@ -7,7 +9,7 @@ namespace Trupe.Supervisors;
 /// Defines the specification for creating a child actor within a supervisor.
 /// </summary>
 /// <param name="ActorType">The type of actor to create.</param>
-public record ChildSpecification(Type ActorType)
+public record ChildSpecification(Type ActorType) : IChildSpecification
 {
     /// <summary>
     /// Gets or sets the mailbox used for message delivery to the child actor.

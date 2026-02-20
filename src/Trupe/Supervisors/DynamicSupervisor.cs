@@ -3,9 +3,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Factories;
-using Trupe.Messages;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;

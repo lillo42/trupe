@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Mailboxes;
 
 namespace Trupe.Supervisors;
 
