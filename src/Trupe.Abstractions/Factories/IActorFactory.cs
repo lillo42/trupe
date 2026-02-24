@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Trupe.Abstractions.Factories;
 
@@ -20,5 +21,8 @@ public interface IActorFactory
     /// <param name="actorType">The type of actor to create. Must implement <see cref="IActor"/>.</param>
     /// <returns>A new instance of the specified actor type.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="actorType"/> does not implement <see cref="IActor"/>.</exception>
-    IActor CreateActor(Type actorType);
+    IActor CreateActor(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type actorType
+    );
 }

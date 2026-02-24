@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions.Mailboxes;
 
 namespace Trupe.Abstractions.Supervisors;
@@ -11,11 +12,11 @@ public interface IChildSpecification
     /// <summary>
     /// Gets the type of the actor to be created.
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
     Type ActorType { get; }
 
     /// <summary>
     /// Gets or sets the mailbox used for message delivery to the child actor.
-    /// Defaults to <see cref="ChannelMailbox"/>.
     /// </summary>
     IMailbox Mailbox { get; set; }
 
