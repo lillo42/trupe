@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Supervisors;
@@ -51,6 +52,7 @@ public class Child(
     /// <summary>
     /// Gets the original type of the actor, used for recreation during restart.
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
     public Type ActorType { get; } = actor.GetType();
 
     /// <summary>

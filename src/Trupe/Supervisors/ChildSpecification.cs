@@ -10,20 +10,25 @@ namespace Trupe.Supervisors;
 /// Defines the specification for a child actor managed by a supervisor,
 /// including its type, mailbox, and restart policy.
 /// </summary>
-/// <param name="ActorType">The type of actor to create.</param>
-public record ChildSpecification() : IChildSpecification
+public record ChildSpecification : IChildSpecification
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChildSpecification"/> class with the specified actor type.
+    /// </summary>
+    /// <param name="actorType">The type of actor to create. Must have public constructors.</param>
     public ChildSpecification(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
             Type actorType
     )
-        : this()
     {
         ActorType = actorType;
     }
 
+    /// <summary>
+    /// Gets the type of actor to create. Must have public constructors.
+    /// </summary>
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-    public Type ActorType { get; init; }
+    public Type ActorType { get; }
 
     /// <summary>
     /// Gets or sets the mailbox used for message delivery to the child actor.
