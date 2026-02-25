@@ -17,6 +17,11 @@ public class ActorSystemConfigurator
     private readonly IServiceCollection _serviceProvider;
 
     /// <summary>
+    /// Gets the underlying <see cref="IServiceCollection"/> used to register services.
+    /// </summary>
+    public IServiceCollection Services => _serviceProvider;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ActorSystemConfigurator"/> class and registers
     /// the default actor system services.
     /// </summary>
