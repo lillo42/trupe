@@ -4,6 +4,8 @@
     <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
      <IsAotCompatible>true</IsAotCompatible>
      <GenerateDocumentationFile>true</GenerateDocumentationFile>
+     <Description>A lightweight, high-performance .NET actor model framework with supervision strategies, channel-based mailboxes, and AOT compatibility.</Description>
+     <PackageTags>actor-model;actors;concurrency;message-passing;supervision;dotnet;trupe</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

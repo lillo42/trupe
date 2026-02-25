@@ -4,6 +4,8 @@
     <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Core abstractions and interfaces for the Trupe actor model framework, including actor, supervisor, and message handling contracts.</Description>
+    <PackageTags>actor-model;actors;concurrency;message-passing;dotnet;trupe</PackageTags>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR  '$(TargetFramework)' == 'net462'">

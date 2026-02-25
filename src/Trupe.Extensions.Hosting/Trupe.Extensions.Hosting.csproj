@@ -3,6 +3,8 @@
     <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
      <IsAotCompatible>true</IsAotCompatible>
      <GenerateDocumentationFile>true</GenerateDocumentationFile>
+     <Description>Hosting integration for the Trupe actor model framework, providing IHostedService support to manage the actor system lifecycle.</Description>
+     <PackageTags>actor-model;actors;hosting;dotnet;trupe</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
