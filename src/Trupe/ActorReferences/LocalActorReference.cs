@@ -41,7 +41,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// <remarks>
     /// <para>
     /// This implementation provides a synchronous wrapper around the asynchronous
-    /// <see cref="AskAsync{TRequest, TResponse}(TRequest, CancellationToken)"/> method.
+    /// <see cref="AskAsync{TResponse}(object, CancellationToken)"/> method.
     /// It blocks the calling thread until a response is received or the timeout expires.
     /// </para>
     /// <para>
@@ -51,12 +51,11 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// </para>
     /// <para>
     /// Note: Calling this method on the actor's own dispatcher thread may cause
-    /// deadlocks. Use <see cref="AskAsync{TRequest, TResponse}(TRequest, CancellationToken)"/>
+    /// deadlocks. Use <see cref="AskAsync{TResponse}(object, CancellationToken)"/>
     /// when calling from within an actor's message processing logic.
     /// </para>
     /// </remarks>
-    public TResponse Ask<TRequest, TResponse>(TRequest request, TimeSpan? timeout = null)
-        where TRequest : notnull
+    public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
     {
         var cts = new CancellationTokenSource();
         if (timeout.HasValue)
@@ -66,7 +65,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
 
         try
         {
-            var result = AskAsync<TRequest, TResponse>(request, cts.Token);
+            var result = AskAsync<TResponse>(request, cts.Token);
             if (result.IsCompletedSuccessfully)
             {
                 return result.Result;
@@ -103,11 +102,10 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// <exception cref="OperationCanceledException">
     /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>.
     /// </exception>
-    public async ValueTask<TResponse> AskAsync<TRequest, TResponse>(
-        TRequest request,
+    public async ValueTask<TResponse> AskAsync<TResponse>(
+        object request,
         CancellationToken cancellationToken = default
     )
-        where TRequest : notnull
     {
         var message = new LocalAskMessage(request, cancellationToken);
 

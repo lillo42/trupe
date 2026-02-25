@@ -18,7 +18,7 @@ namespace Trupe.Abstractions;
 /// </para>
 /// <para>
 /// This interface supports both fire-and-forget (<see cref="Tell{TMessage}"/>)
-/// and request-response (<see cref="Ask{TRequest, TResponse}"/>) messaging patterns.
+/// and request-response (<see cref="Ask{TResponse}"/>) messaging patterns.
 /// </para>
 /// </remarks>
 public interface IActorReference : IEquatable<IActorReference>
@@ -35,7 +35,6 @@ public interface IActorReference : IEquatable<IActorReference>
     /// <summary>
     /// Sends a request message to the actor and synchronously waits for a response.
     /// </summary>
-    /// <typeparam name="TRequest">The type of the request message. Must be a non-nullable type.</typeparam>
     /// <typeparam name="TResponse">The type of the expected response.</typeparam>
     /// <param name="request">The request message to send to the actor.</param>
     /// <param name="timeout">
@@ -46,7 +45,7 @@ public interface IActorReference : IEquatable<IActorReference>
     /// <remarks>
     /// <para>
     /// This method blocks the calling thread until a response is received or the timeout expires.
-    /// For non-blocking alternatives, use <see cref="AskAsync{TRequest, TResponse}(TRequest, CancellationToken)"/>.
+    /// For non-blocking alternatives, use <see cref="AskAsync{TResponse}(object, CancellationToken)"/>.
     /// </para>
     /// <para>
     /// The ask pattern creates a temporary actor to handle the response, which is automatically
@@ -54,13 +53,11 @@ public interface IActorReference : IEquatable<IActorReference>
     /// </para>
     /// <exception cref="TimeoutException">Thrown when the specified timeout expires before receiving a response.</exception>
     /// </remarks>
-    TResponse Ask<TRequest, TResponse>(TRequest request, TimeSpan? timeout = null)
-        where TRequest : notnull;
+    TResponse Ask<TResponse>(object request, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a request message to the actor and waits for a response.
     /// </summary>
-    /// <typeparam name="TRequest">The type of the request message. Must be a non-nullable type.</typeparam>
     /// <typeparam name="TResponse">The type of the expected response.</typeparam>
     /// <param name="request">The request message to send to the actor.</param>
     /// <param name="cancellationToken">
@@ -77,15 +74,14 @@ public interface IActorReference : IEquatable<IActorReference>
     /// as it doesn't block the calling thread and integrates well with async/await.
     /// </para>
     /// <para>
-    /// Like <see cref="Ask{TRequest, TResponse}(TRequest, TimeSpan?)"/>, this method creates
+    /// Like <see cref="Ask{TResponse}(object, TimeSpan?)"/>, this method creates
     /// a temporary actor to handle the response, which is automatically cleaned up.
     /// </para>
     /// </remarks>
-    ValueTask<TResponse> AskAsync<TRequest, TResponse>(
-        TRequest request,
+    ValueTask<TResponse> AskAsync<TResponse>(
+        object request,
         CancellationToken cancellationToken = default
-    )
-        where TRequest : notnull;
+    );
 
     /// <summary>
     /// Sends a message to the actor using fire-and-forget semantics with a timeout
