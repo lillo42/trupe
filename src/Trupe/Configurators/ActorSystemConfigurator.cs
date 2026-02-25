@@ -32,6 +32,7 @@ public class ActorSystemConfigurator
 
         _serviceProvider.TryAddSingleton<ActorSystem>();
         _serviceProvider.TryAddSingleton<IRootSupervisor, RootSupervisor>();
+        _serviceProvider.TryAddSingleton(_ => ActorRegister.Instance);
 
         _serviceProvider.Configure<RootSupervisorOptions>(_ => { });
     }
@@ -150,6 +151,17 @@ public class ActorSystemConfigurator
         }
 
         _serviceProvider.AddSingleton(typeof(IRootSupervisor), rootSupervisorType);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets a custom <see cref="IActorRegister"/> instance, replacing the default <see cref="ActorRegister.Instance"/>.
+    /// </summary>
+    /// <param name="actorRegister">The <see cref="IActorRegister"/> instance to use.</param>
+    /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
+    public ActorSystemConfigurator SetActorRegister(IActorRegister actorRegister)
+    {
+        _serviceProvider.AddSingleton(_ => actorRegister);
         return this;
     }
 }
