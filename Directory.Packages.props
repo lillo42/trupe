@@ -27,15 +27,25 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="Microsoft.Bcl.HashCode" Version="[6.0.0, 7.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[10.0.0, 11.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="[10.0.0, 11.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Collections.Immutable" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Threading.Channels" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="[4.6.3, 5.0.0)" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="Microsoft.Bcl.HashCode" Version="[6.0.0, 7.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[10.0.0, 11.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="[10.0.0, 11.0.0)" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Collections.Immutable" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Threading.Channels" Version="[10.0.0, 11.0.0)" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="[4.6.3, 5.0.0)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -50,5 +60,12 @@
   <ItemGroup>
     <GlobalPackageReference Include="MinVer" Version="7.0.0" />
     <GlobalPackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <GlobalPackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </GlobalPackageReference>
   </ItemGroup>
 </Project>

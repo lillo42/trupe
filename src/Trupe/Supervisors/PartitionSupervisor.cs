@@ -274,7 +274,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the initialization operation.</returns>
     protected virtual ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -344,7 +344,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         else
         {
             child.Reference.Terminate(reason);
-            return ValueTask.CompletedTask;
+            return new ValueTask();
         }
     }
 
@@ -443,7 +443,7 @@ public abstract partial class PartitionSupervisor<TActor>(
             disposable.Dispose();
         }
 
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>

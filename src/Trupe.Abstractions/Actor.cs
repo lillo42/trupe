@@ -78,7 +78,7 @@ public abstract class Actor : IActor
     /// </remarks>
     public virtual ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public abstract class Actor : IActor
     /// </remarks>
     public virtual ValueTask AfterRestartAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -106,7 +106,7 @@ public abstract class Actor : IActor
     /// </remarks>
     public virtual ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>

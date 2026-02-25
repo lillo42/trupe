@@ -9,7 +9,7 @@ namespace Trupe.Abstractions;
 /// This class abstracts the UUID generation process, using the most appropriate
 /// method based on the target framework:
 /// <list type="bullet">
-/// <item><description>For .NET 9.0 and later: Uses <see cref="Guid.CreateVersion7()"/> which generates time-based UUIDs (Version 7)</description></item>
+/// <item><description>For .NET 9.0 and later: Uses Guid.CreateVersion7() which generates time-based UUIDs (Version 7)</description></item>
 /// <item><description>For earlier versions: Uses <see cref="Guid.NewGuid()"/> which generates random UUIDs (Version 4)</description></item>
 /// </list>
 /// </remarks>

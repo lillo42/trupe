@@ -6,4 +6,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR  '$(TargetFramework)' == 'net462'">
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
+    <PackageReference Include="System.Threading.Tasks.Extensions" />
+  </ItemGroup>
+
 </Project>

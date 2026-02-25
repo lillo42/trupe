@@ -29,9 +29,9 @@ public class RootSupervisor(
     {
         foreach (var child in options.Value.Children)
         {
-            AddChild(new ChildSpecification(child));
+            AddChild(child);
         }
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <inheritdoc />

@@ -62,13 +62,13 @@ public class SupervisorTest
             set => base.Children = value;
         }
 
-        public new IActorReference AddChild(ChildSpecification specification) =>
+        public new IActorReference AddChild(IChildSpecification specification) =>
             base.AddChild(specification);
 
         public new IActorReference AddChild(Type actorType) => base.AddChild(actorType);
 
         public new ValueTask<IActorReference> AddChildAsync(
-            ChildSpecification specification,
+            IChildSpecification specification,
             CancellationToken cancellationToken = default
         ) => base.AddChildAsync(specification, cancellationToken);
 
@@ -92,7 +92,7 @@ public class SupervisorTest
         public new Task ApplyRestartAsync(Child child) => base.ApplyRestartAsync(child);
 
         public new Child CreateActor(
-            ChildSpecification specification,
+            IChildSpecification specification,
             LocalActorReference reference
         ) => base.CreateActor(specification, reference);
 
