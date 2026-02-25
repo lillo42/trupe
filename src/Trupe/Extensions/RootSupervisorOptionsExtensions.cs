@@ -23,7 +23,7 @@ public static class RootSupervisorOptionsExtensions
     >(this RootSupervisorOptions options, Action<ChildSpecification>? configure = null)
         where TActor : class, IActor
     {
-        var childSpec = new ChildSpecification { ActorType = typeof(TActor) };
+        var childSpec = new ChildSpecification(typeof(TActor));
         configure?.Invoke(childSpec);
         options.Children.Add(childSpec);
         return options;
@@ -51,7 +51,7 @@ public static class RootSupervisorOptionsExtensions
             );
         }
 
-        var childSpec = new ChildSpecification { ActorType = actorType };
+        var childSpec = new ChildSpecification(actorType);
         configure?.Invoke(childSpec);
         options.Children.Add(childSpec);
         return options;

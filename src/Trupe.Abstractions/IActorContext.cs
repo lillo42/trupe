@@ -26,7 +26,7 @@ public interface IActorContext
     /// </summary>
     /// <remarks>
     /// <para>
-    /// If the current message was sent via <see cref="IActorReference.Ask{TRequest, TResponse}"/>,
+    /// If the current message was sent via <see cref="IActorReference.Ask{TResponse}"/>,
     /// setting this property will result in the sender's awaited task completing with this value.
     /// </para>
     /// <para>

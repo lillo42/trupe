@@ -188,7 +188,7 @@ public class SupervisorTest
         var reference = new LocalActorReference(mailbox);
         actor.Context = new ActorContext(reference);
         var process = new ActorProcess(actor, mailbox);
-        return new Child(actor, mailbox, process, reference, restartPolicy);
+        return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
     }
 
     private static IActorFactory CreateFactory(IActor actorToReturn)
@@ -1210,7 +1210,8 @@ public class SupervisorTest
             mailbox,
             process,
             reference,
-            RestartPolicy.Permanent
+            RestartPolicy.Permanent,
+            typeof(SimpleSupervisorActor)
         );
 
         // Act
@@ -1230,7 +1231,14 @@ public class SupervisorTest
         simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
-        var child = new Child(simpleActor, mailbox, process, reference, RestartPolicy.Permanent);
+        var child = new Child(
+            simpleActor,
+            mailbox,
+            process,
+            reference,
+            RestartPolicy.Permanent,
+            typeof(SimpleActor)
+        );
 
         // Act
         await supervisor.ResetMailboxAsync(child);

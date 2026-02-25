@@ -18,6 +18,6 @@ public class DependencyInjectionActorFactory(IServiceProvider serviceProvider) :
             Type actorType
     )
     {
-        return (IActor)serviceProvider.GetRequiredService(actorType)!;
+        return (IActor)serviceProvider.GetRequiredService(actorType);
     }
 }

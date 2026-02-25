@@ -677,7 +677,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             specification.Mailbox,
             process,
             reference,
-            specification.RestartPolicy
+            specification.RestartPolicy,
+            specification.ActorType
         );
         Children = Children.Add(metadata);
 
