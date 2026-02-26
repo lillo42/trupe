@@ -6,13 +6,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Exceptions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
+using Trupe.Abstractions.SystemMessages;
 using Trupe.ActorReferences;
-using Trupe.Events;
-using Trupe.Exceptions;
-using Trupe.Factories;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
-using Trupe.SystemMessages;
 
 namespace Trupe.Supervisors;
 
@@ -137,9 +140,9 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <returns>A completed task.</returns>
     public virtual ValueTask HandleAsync(AddActor message, CancellationToken cancellationToken)
     {
-        CreateActor(message.Specification, message.Reference);
+        CreateActor(message.Specification, (LocalActorReference)message.Reference);
 
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -228,7 +231,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual IActorReference AddChild<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
     >()
         where TActor : IActor
     {
@@ -243,7 +246,10 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected virtual IActorReference AddChild(Type actorType)
+    protected virtual IActorReference AddChild(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type actorType
+    )
     {
         return AddChild(new ChildSpecification(actorType));
     }
@@ -256,7 +262,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <exception cref="SupervisorAlreadyInitializedException">
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
-    protected virtual IActorReference AddChild(ChildSpecification specification)
+    protected virtual IActorReference AddChild(IChildSpecification specification)
     {
         if (_initialized)
         {
@@ -281,7 +287,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual ValueTask<IActorReference> AddChildAsync<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TActor
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
     {
@@ -298,7 +304,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual ValueTask<IActorReference> AddChildAsync(
-        Type actorType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type actorType,
         CancellationToken cancellationToken = default
     )
     {
@@ -315,7 +322,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual ValueTask<IActorReference> AddChildAsync(
-        ChildSpecification specification,
+        IChildSpecification specification,
         CancellationToken cancellationToken = default
     )
     {
@@ -631,7 +638,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             disposable.Dispose();
         }
 
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -654,7 +661,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="reference">The local actor reference to associate with the child.</param>
     /// <returns>The metadata for the created child actor.</returns>
     protected virtual Child CreateActor(
-        ChildSpecification specification,
+        IChildSpecification specification,
         LocalActorReference reference
     )
     {
@@ -670,7 +677,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
             specification.Mailbox,
             process,
             reference,
-            specification.RestartPolicy
+            specification.RestartPolicy,
+            specification.ActorType
         );
         Children = Children.Add(metadata);
 

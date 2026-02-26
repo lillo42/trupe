@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Mailboxes;
 
 namespace Trupe.Supervisors;
 
@@ -13,12 +16,14 @@ namespace Trupe.Supervisors;
 /// <param name="process">The actor process managing the message loop.</param>
 /// <param name="reference">The local actor reference for communication.</param>
 /// <param name="restartPolicy">The restart policy for this child actor.</param>
+/// <param name="actorType">The original type of the actor, used for recreation during restart.</param>
 public class Child(
     IActor actor,
     IMailbox mailbox,
     ActorProcess process,
     LocalActorReference reference,
-    RestartPolicy restartPolicy
+    RestartPolicy restartPolicy,
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type actorType
 )
 {
     /// <summary>
@@ -49,7 +54,8 @@ public class Child(
     /// <summary>
     /// Gets the original type of the actor, used for recreation during restart.
     /// </summary>
-    public Type ActorType { get; } = actor.GetType();
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+    public Type ActorType { get; } = actorType;
 
     /// <summary>
     /// Gets or sets the number of times this actor has been restarted within the current window.

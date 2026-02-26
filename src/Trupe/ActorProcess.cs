@@ -6,11 +6,12 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Trupe.Events;
-using Trupe.Exceptions;
-using Trupe.Mailboxes;
-using Trupe.Messages;
-using Trupe.SystemMessages;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Exceptions;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.SystemMessages;
 
 namespace Trupe;
 
@@ -57,7 +58,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     public event EventHandler<ActorFailureEventArgs>? Failure;
 
     /// <summary>
-    /// Event raised when the actor receives a <see cref="SystemMessages.Terminate"/> message and stops processing.
+    /// Event raised when the actor receives a <see cref="Abstractions.SystemMessages.Terminate"/> message and stops processing.
     /// </summary>
     /// <remarks>
     /// Subscribers can use this event to detect voluntary actor termination, as opposed to

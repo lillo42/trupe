@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Trupe.Abstractions.Messages;
 using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
@@ -121,7 +122,7 @@ public class LocalActorReferenceTest
             cancellationToken
         );
 
-        var response = actorRef.Ask<object, object>(message);
+        var response = actorRef.Ask<object>(message);
 
         await Assert.That(response).IsSameReferenceAs(responseValue);
         await task;
@@ -139,7 +140,7 @@ public class LocalActorReferenceTest
         // Act
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
         await Assert
-            .That(() => actorRef.Ask<object, object>(message, TimeSpan.FromSeconds(1)))
+            .That(() => actorRef.Ask<object>(message, TimeSpan.FromSeconds(1)))
             .Throws<TimeoutException>();
     }
 
@@ -173,7 +174,7 @@ public class LocalActorReferenceTest
             cancellationToken
         );
 
-        var response = await actorRef.AskAsync<object, object>(message, cancellationToken);
+        var response = await actorRef.AskAsync<object>(message, cancellationToken);
 
         await Assert.That(response).IsSameReferenceAs(responseValue);
         await task;
@@ -192,7 +193,7 @@ public class LocalActorReferenceTest
         await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert
-            .That(async () => await actorRef.AskAsync<object, object>(message, cts.Token).AsTask())
+            .That(async () => await actorRef.AskAsync<object>(message, cts.Token).AsTask())
             .Throws<OperationCanceledException>();
     }
 }

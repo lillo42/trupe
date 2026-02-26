@@ -4,8 +4,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Factories;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors;
@@ -42,13 +44,13 @@ public class DynamicSupervisorTest
             set => base.Children = value;
         }
 
-        public new IActorReference AddChild(ChildSpecification specification) =>
+        public new IActorReference AddChild(IChildSpecification specification) =>
             base.AddChild(specification);
 
         public new IActorReference AddChild(Type actorType) => base.AddChild(actorType);
 
         public new ValueTask<IActorReference> AddChildAsync(
-            ChildSpecification specification,
+            IChildSpecification specification,
             CancellationToken cancellationToken = default
         ) => base.AddChildAsync(specification, cancellationToken);
 
@@ -58,7 +60,7 @@ public class DynamicSupervisorTest
         ) => base.AddChildAsync(actorType, cancellationToken);
 
         public new Child CreateActor(
-            ChildSpecification specification,
+            IChildSpecification specification,
             LocalActorReference reference
         ) => base.CreateActor(specification, reference);
 

@@ -25,6 +25,12 @@ Trupe is an actor model framework for .NET that provides a simple yet powerful w
 dotnet add package Trupe
 ```
 
+For hosting integration (automatic start/stop with the application host):
+
+```bash
+dotnet add package Trupe.Extensions.Hosting
+```
+
 ## Quick Start
 
 ### Creating an Actor
@@ -184,6 +190,57 @@ public class AotCompatibleActor : Actor
     private ValueTask HandleAdd(Add message) { /* ... */ }
 }
 ```
+
+## Dependency Injection
+
+Register the actor system using the `AddTrupe` extension method:
+
+```csharp
+services.AddTrupe(config =>
+{
+    config.AddActor<GreeterActor>();
+    config.AddSupervisor<MySupervisor>();
+    config.ConfigureRootSupervisor(options => { /* ... */ });
+});
+```
+
+### Hosting Integration
+
+Use `Trupe.Extensions.Hosting` to automatically start and stop the actor system with the application host:
+
+```csharp
+services.AddTrupe(config =>
+{
+    config.AddActor<GreeterActor>();
+    config.AddHostedService();
+});
+```
+
+### Actor Registry
+
+The `IActorRegister` provides a thread-safe registry for looking up actors by identifier:
+
+```csharp
+// Register an actor reference
+actorRegister.Register("my-actor", actorRef);
+
+// Look up an actor
+var actor = actorRegister.Get("my-actor");
+
+// Safe lookup
+if (actorRegister.TryGet("my-actor", out var actorRef))
+{
+    actorRef.Tell(new Greet("World"));
+}
+```
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `Trupe.Abstractions` | Core interfaces and abstractions (IActor, ISupervisor, IActorReference, etc.) |
+| `Trupe` | Actor model implementation with supervision, mailboxes, and DI integration |
+| `Trupe.Extensions.Hosting` | IHostedService integration for managing actor system lifecycle |
 
 ## Requirements
 

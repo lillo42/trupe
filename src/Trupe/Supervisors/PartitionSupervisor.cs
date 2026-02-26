@@ -1,19 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.Exceptions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Mailboxes;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
+using Trupe.Abstractions.SystemMessages;
 using Trupe.ActorReferences;
-using Trupe.Events;
-using Trupe.Exceptions;
-using Trupe.Factories;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
-using Trupe.SystemMessages;
 
 namespace Trupe.Supervisors;
 
@@ -25,11 +29,9 @@ namespace Trupe.Supervisors;
 /// <param name="actorFactory">The factory used to create child actors.</param>
 /// <param name="logger">The logger for supervisor operations.</param>
 /// <param name="workers">The number of worker actors to create in the partition.</param>
-public abstract partial class PartitionSupervisor<TActor>(
-    IActorFactory actorFactory,
-    ILogger logger,
-    int workers
-)
+public abstract partial class PartitionSupervisor<
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
+>(IActorFactory actorFactory, ILogger logger, int workers)
     : Actor,
         ISupervisor,
         IHandleActorMessage<ActorFailed>,
@@ -175,17 +177,17 @@ public abstract partial class PartitionSupervisor<TActor>(
     )
     {
         using var _actorType = Logger.BeginScope("{ActorType}", message.Actor.GetType());
-        Log.ProcessingFailedActor(Logger, message.Exception);
+        PartitionLog.ProcessingFailedActor(Logger, message.Exception);
 
         var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
         if (child == null)
         {
-            Log.ActorNotFound(Logger);
+            PartitionLog.ActorNotFound(Logger);
             return;
         }
 
         await OnActorFailed(child, message.Message, message.Exception, cancellationToken);
-        Log.FailedActorProcessed(Logger);
+        PartitionLog.FailedActorProcessed(Logger);
     }
 
     /// <summary>
@@ -199,18 +201,18 @@ public abstract partial class PartitionSupervisor<TActor>(
         CancellationToken cancellationToken = default
     )
     {
-        Log.ProcessingTerminatedActor(Logger, message.Reason);
+        PartitionLog.ProcessingTerminatedActor(Logger, message.Reason);
 
         var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
         if (child == null)
         {
-            Log.ActorNotFound(Logger);
+            PartitionLog.ActorNotFound(Logger);
             return;
         }
 
         await OnActorTerminated(child, message.Reason);
 
-        Log.FinishedProcessingTerminatedActor(Logger);
+        PartitionLog.FinishedProcessingTerminatedActor(Logger);
     }
 
     /// <summary>
@@ -271,7 +273,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the initialization operation.</returns>
     protected virtual ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
     {
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -294,7 +296,7 @@ public abstract partial class PartitionSupervisor<TActor>(
 
         var action = GetFailureAction(child, exception);
 
-        Log.GoingToApplyFailureAction(Logger, action, Strategy);
+        PartitionLog.GoingToApplyFailureAction(Logger, action, Strategy);
         if (action == FailureAction.Restart)
         {
             await ApplyRestartAsync(child);
@@ -314,13 +316,13 @@ public abstract partial class PartitionSupervisor<TActor>(
 
         if (message is IAskMessage askMessage)
         {
-            Log.CancelAskMessage(Logger);
+            PartitionLog.CancelAskMessage(Logger);
             askMessage.SetCanceled();
         }
 
         if (exception is EscalateFailureException { ActorMessage: IAskMessage escalateAskMessage })
         {
-            Log.CancelAskMessage(Logger);
+            PartitionLog.CancelAskMessage(Logger);
             escalateAskMessage.SetCanceled();
         }
     }
@@ -341,7 +343,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         else
         {
             child.Reference.Terminate(reason);
-            return ValueTask.CompletedTask;
+            return new ValueTask();
         }
     }
 
@@ -391,7 +393,8 @@ public abstract partial class PartitionSupervisor<TActor>(
             specification.Mailbox,
             process,
             reference,
-            specification.RestartPolicy
+            specification.RestartPolicy,
+            typeof(TActor)
         );
         Children = Children.Add(child);
 
@@ -408,7 +411,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual void HandleFailure(object? sender, ActorFailureEventArgs args)
     {
         using var _ = Logger.BeginScope("{ActorType}", args.Actor.GetType());
-        Log.HandlingFailedActor(Logger, args.Exception);
+        PartitionLog.HandlingFailedActor(Logger, args.Exception);
         Context.Self.Tell(new ActorFailed(args.Actor, args.Message, args.Exception));
     }
 
@@ -420,7 +423,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     protected virtual void HandleTermination(object? sender, ActorTerminateEventArgs args)
     {
         using var _ = Logger.BeginScope("{ActorType}", args.Actor.GetType());
-        Log.HandlingTerminatedActor(Logger, args.Reason);
+        PartitionLog.HandlingTerminatedActor(Logger, args.Reason);
         Context.Self.Tell(new ActorTerminated(args.Actor, args.Reason));
     }
 
@@ -440,7 +443,7 @@ public abstract partial class PartitionSupervisor<TActor>(
             disposable.Dispose();
         }
 
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 
     /// <summary>
@@ -452,7 +455,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         var now = DateTimeOffset.UtcNow;
         if ((now - metadata.LastRestartTime) > RestartWindow)
         {
-            Log.ResetingActorCounter(Logger, metadata.ActorType);
+            PartitionLog.ResetingActorCounter(Logger, metadata.ActorType);
             metadata.RestartCount = 0;
         }
     }
@@ -497,13 +500,13 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the stop operation.</returns>
     protected virtual async Task StopActorAsync(Child metadata)
     {
-        Log.StoppingActor(Logger);
+        PartitionLog.StoppingActor(Logger);
 
         metadata.Process.Failure -= HandleFailure;
         metadata.Process.Terminate -= HandleTermination;
         await metadata.Process.StopAsync();
 
-        Log.ActorStopped(Logger);
+        PartitionLog.ActorStopped(Logger);
     }
 
     /// <summary>
@@ -513,12 +516,12 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the resume operation.</returns>
     protected virtual async Task ApplyResumeAsync(Child metadata)
     {
-        Log.ResumingActor(Logger);
+        PartitionLog.ResumingActor(Logger);
 
         await metadata.Process.StopAsync();
         metadata.Process.Start();
 
-        Log.ActorResumed(Logger);
+        PartitionLog.ActorResumed(Logger);
     }
 
     /// <summary>
@@ -535,7 +538,7 @@ public abstract partial class PartitionSupervisor<TActor>(
         Exception exception
     )
     {
-        Log.ScalatingError(Logger);
+        PartitionLog.ScalatingError(Logger);
 
         await metadata.Process.StopAsync();
         throw new EscalateFailureException(
@@ -573,7 +576,7 @@ public abstract partial class PartitionSupervisor<TActor>(
     /// <returns>A task representing the reset operation.</returns>
     protected virtual async Task ResetActorAsync(Child child)
     {
-        Log.ResetingActor(Logger);
+        PartitionLog.ResetingActor(Logger);
 
         await StopActorAsync(child);
         await BeforeRestartActorAsync(child);
@@ -582,13 +585,13 @@ public abstract partial class PartitionSupervisor<TActor>(
 
         await ResetMailboxAsync(child);
 
-        Log.CreatingNewActorInstance(Logger);
+        PartitionLog.CreatingNewActorInstance(Logger);
         child.Actor = ActorFactory.CreateActor(child.ActorType);
         child.Actor.Context = new ActorContext(child.Reference);
-        Log.ActoCreateWithSuccess(Logger);
+        PartitionLog.ActoCreateWithSuccess(Logger);
 
         await child.Process.DisposeAsync();
-        Log.CreateNewProcess(Logger);
+        PartitionLog.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
         child.Process.Failure += HandleFailure;
         child.Process.Terminate += HandleTermination;
@@ -597,7 +600,8 @@ public abstract partial class PartitionSupervisor<TActor>(
             new LocalTellMessage(new InitializeActor()),
             new LocalTellMessage(new AfterRestartActor())
         );
-        Log.ActorProcessStarted(Logger);
+
+        PartitionLog.ActorProcessStarted(Logger);
     }
 
     /// <summary>
@@ -622,137 +626,131 @@ public abstract partial class PartitionSupervisor<TActor>(
     {
         try
         {
-            Log.CallBeforeRestartActor(Logger);
+            PartitionLog.CallBeforeRestartActor(Logger);
             await metadata.Actor.BeforeRestartAsync();
-            Log.SuccessBeforeRestartActor(Logger);
+            PartitionLog.SuccessBeforeRestartActor(Logger);
         }
         catch (Exception ex)
         {
-            Log.ErrorDuringCallBeforeRestartActor(Logger, ex);
+            PartitionLog.ErrorDuringCallBeforeRestartActor(Logger, ex);
         }
     }
+}
 
-    private static partial class Log
-    {
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Received failure notification from child actor"
-        )]
-        public static partial void HandlingFailedActor(ILogger logger, Exception exception);
+internal static partial class PartitionLog
+{
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Received failure notification from child actor"
+    )]
+    public static partial void HandlingFailedActor(ILogger logger, Exception exception);
 
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Received termination notification from child actor with reason: {Reason}"
-        )]
-        public static partial void HandlingTerminatedActor(ILogger logger, string? reason);
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Received termination notification from child actor with reason: {Reason}"
+    )]
+    public static partial void HandlingTerminatedActor(ILogger logger, string? reason);
 
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Processing actor failure for supervised child"
-        )]
-        public static partial void ProcessingFailedActor(ILogger logger, Exception exception);
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Processing actor failure for supervised child"
+    )]
+    public static partial void ProcessingFailedActor(ILogger logger, Exception exception);
 
-        [LoggerMessage(Level = LogLevel.Information, Message = "Failed Actor processed")]
-        public static partial void FailedActorProcessed(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Failed Actor processed")]
+    public static partial void FailedActorProcessed(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Error,
-            Message = "Failed actor not found in supervised children list"
-        )]
-        public static partial void ActorNotFound(ILogger logger);
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Failed actor not found in supervised children list"
+    )]
+    public static partial void ActorNotFound(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Canceling pending ask message due to actor failure"
-        )]
-        public static partial void CancelAskMessage(ILogger logger);
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Canceling pending ask message due to actor failure"
+    )]
+    public static partial void CancelAskMessage(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Applying failure action '{FailureAction}' using '{Strategy}' strategy"
-        )]
-        public static partial void GoingToApplyFailureAction(
-            ILogger logger,
-            FailureAction failureAction,
-            Strategy strategy
-        );
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Applying failure action '{FailureAction}' using '{Strategy}' strategy"
+    )]
+    public static partial void GoingToApplyFailureAction(
+        ILogger logger,
+        FailureAction failureAction,
+        Strategy strategy
+    );
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Resuming actor after failure")]
-        public static partial void ResumingActor(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Resuming actor after failure")]
+    public static partial void ResumingActor(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "Actor resumed and ready to process messages"
-        )]
-        public static partial void ActorResumed(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Actor resumed and ready to process messages")]
+    public static partial void ActorResumed(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
-        public static partial void ResetingActor(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
+    public static partial void ResetingActor(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
-        public static partial void ActorRestarted(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
+    public static partial void ActorRestarted(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Stopping actor process")]
-        public static partial void StoppingActor(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Stopping actor process")]
+    public static partial void StoppingActor(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor process stopped successfully")]
-        public static partial void ActorStopped(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Actor process stopped successfully")]
+    public static partial void ActorStopped(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Invoking BeforeRestartAsync on actor")]
-        public static partial void CallBeforeRestartActor(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Invoking BeforeRestartAsync on actor")]
+    public static partial void CallBeforeRestartActor(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "BeforeRestartAsync completed successfully"
-        )]
-        public static partial void SuccessBeforeRestartActor(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "BeforeRestartAsync completed successfully")]
+    public static partial void SuccessBeforeRestartActor(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Warning,
-            Message = "BeforeRestartAsync threw an exception, ignoring and continuing with restart"
-        )]
-        public static partial void ErrorDuringCallBeforeRestartActor(
-            ILogger logger,
-            Exception exception
-        );
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "BeforeRestartAsync threw an exception, ignoring and continuing with restart"
+    )]
+    public static partial void ErrorDuringCallBeforeRestartActor(
+        ILogger logger,
+        Exception exception
+    );
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Creating new actor instance for restart")]
-        public static partial void CreatingNewActorInstance(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Creating new actor instance for restart")]
+    public static partial void CreatingNewActorInstance(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
-        public static partial void ActoCreateWithSuccess(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
+    public static partial void ActoCreateWithSuccess(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "Creating and starting actor process with InitializeActor and AfterRestartActor messages"
-        )]
-        public static partial void CreateNewProcess(ILogger logger);
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Creating and starting actor process with InitializeActor and AfterRestartActor messages"
+    )]
+    public static partial void CreateNewProcess(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "Actor process started and processing messages"
-        )]
-        public static partial void ActorProcessStarted(ILogger logger);
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Actor process started and processing messages"
+    )]
+    public static partial void ActorProcessStarted(ILogger logger);
 
-        [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
-        public static partial void ScalatingError(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
+    public static partial void ScalatingError(ILogger logger);
 
-        [LoggerMessage(
-            Level = LogLevel.Information,
-            Message = "Resetting restart counter for actor type {ActorType} after restart window elapsed"
-        )]
-        public static partial void ResetingActorCounter(ILogger logger, Type actorType);
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Resetting restart counter for actor type {ActorType} after restart window elapsed"
+    )]
+    public static partial void ResetingActorCounter(ILogger logger, Type actorType);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "Processing termination ({Reason}) of child actor"
-        )]
-        public static partial void ProcessingTerminatedActor(ILogger logger, string? reason);
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Processing termination ({Reason}) of child actor"
+    )]
+    public static partial void ProcessingTerminatedActor(ILogger logger, string? reason);
 
-        [LoggerMessage(
-            Level = LogLevel.Trace,
-            Message = "Finished processing termination of child actor"
-        )]
-        public static partial void FinishedProcessingTerminatedActor(ILogger logger);
-    }
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Finished processing termination of child actor"
+    )]
+    public static partial void FinishedProcessingTerminatedActor(ILogger logger);
 }

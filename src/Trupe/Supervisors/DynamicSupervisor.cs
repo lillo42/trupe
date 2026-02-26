@@ -3,9 +3,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Trupe.Abstractions;
+using Trupe.Abstractions.Factories;
+using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
-using Trupe.Factories;
-using Trupe.Messages;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;
@@ -54,7 +56,7 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
     /// </summary>
     /// <param name="specification">The specification defining the child actor to create.</param>
     /// <returns>A reference to the newly created child actor.</returns>
-    protected override IActorReference AddChild(ChildSpecification specification)
+    protected override IActorReference AddChild(IChildSpecification specification)
     {
         var actorRef = new LocalActorReference(specification.Mailbox);
         Context.Self.Tell(new AddActor(specification, actorRef));
@@ -108,7 +110,7 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
 
     /// <inheritdoc />
     protected override ValueTask<IActorReference> AddChildAsync(
-        ChildSpecification specification,
+        IChildSpecification specification,
         CancellationToken cancellationToken = default
     )
     {
@@ -162,6 +164,6 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
             return Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken);
         }
 
-        return ValueTask.CompletedTask;
+        return new ValueTask();
     }
 }
