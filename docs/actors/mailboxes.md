@@ -5,13 +5,13 @@ Every actor in Trupe has a **mailbox** — a message queue that stores incoming 
 ## How Mailboxes Work
 
 ```
-Sender A ──Tell──►┐
+Sender A ──Tell───►┐
                    │
 Sender B ──Tell──►─┤  ┌──────────────────────────┐     ┌───────────┐
-                   ├──►  Mailbox (Message Queue)  ├────►│   Actor   │
+                   ├──►  Mailbox (Message Queue) ├────►│   Actor   │
 Sender C ──Ask───►─┤  └──────────────────────────┘     └───────────┘
                    │
-Sender D ──Tell──►┘
+Sender D ──Tell───►┘
 ```
 
 - Multiple senders can write to the mailbox concurrently (thread-safe).

@@ -11,7 +11,7 @@ Strategy.OneForOne
 When a child actor fails, **only that specific child** is affected by the failure action (restart, stop, etc.). All sibling actors continue running uninterrupted.
 
 ```
-          ┌─────────────┐
+          ┌──────────────┐
           │  Supervisor  │
           └──────┬───────┘
                  │
@@ -24,10 +24,10 @@ When a child actor fails, **only that specific child** is affected by the failur
  └────────┘ └────┬───┘ └────────┘
                  │
                  ▼
-            ┌────────┐
-            │Actor B │  ← Only B is restarted
+            ┌─────────┐
+            │Actor B  │  ← Only B is restarted
             │Restarted│
-            └────────┘
+            └─────────┘
 ```
 
 ### When to Use
@@ -67,7 +67,7 @@ Strategy.AllForOne
 When a child actor fails, **all children** of the supervisor are affected by the failure action. If the action is restart, all children are restarted — not just the one that failed.
 
 ```
-          ┌─────────────┐
+          ┌──────────────┐
           │  Supervisor  │
           └──────┬───────┘
                  │
@@ -80,10 +80,10 @@ When a child actor fails, **all children** of the supervisor are affected by the
  └────┬───┘ └────┬───┘ └────┬───┘
       │          │          │
       ▼          ▼          ▼
- ┌────────┐ ┌────────┐ ┌────────┐
- │Actor A │ │Actor B │ │Actor C │  ← All restarted
+ ┌─────────┐ ┌─────────┐ ┌─────────┐
+ │Actor A  │ │Actor B  │ │Actor C  │  ← All restarted
  │Restarted│ │Restarted│ │Restarted│
- └────────┘ └────────┘ └────────┘
+ └─────────┘ └─────────┘ └─────────┘
 ```
 
 ### When to Use

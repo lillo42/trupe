@@ -6,52 +6,52 @@ Every actor in Trupe goes through a well-defined lifecycle. Understanding these 
 
 ```
     ┌───────────────┐
-    │  Created       │  Actor is instantiated by the factory
+    │  Created      │  Actor is instantiated by the factory
     └──────┬────────┘
            │
            ▼
     ┌───────────────┐
-    │  Initialize    │  InitializeAsync() is called
+    │  Initialize   │  InitializeAsync() is called
     └──────┬────────┘
            │
            ▼
     ┌───────────────┐
-    │  Running       │  Processing messages from the mailbox
+    │  Running      │  Processing messages from the mailbox
     └──────┬────────┘
            │
-      ┌────┴────┐
+      ┌────┴─────┐
       │ Failure? │
-      └────┬────┘
+      └────┬─────┘
       Yes  │  No
       ▼    │
   ┌─────────┐  │
-  │ Restart  │  │
-  │ or Stop  │  │
+  │ Restart │  │
+  │ or Stop │  │
   └────┬────┘  │
        │       │
        │       ▼
-       │  ┌──────────┐
+       │  ┌───────────┐
        │  │ Terminated│
-       │  └──────────┘
+       │  └───────────┘
        │
        ▼
   ┌──────────────────┐
-  │ BeforeRestart     │  BeforeRestartAsync() - cleanup
+  │ BeforeRestart    │  BeforeRestartAsync() - cleanup
   └──────┬───────────┘
          │
          ▼
   ┌──────────────────┐
-  │ New Instance      │  Fresh actor is created
+  │ New Instance     │  Fresh actor is created
   └──────┬───────────┘
          │
          ▼
   ┌──────────────────┐
-  │ AfterRestart      │  AfterRestartAsync() - re-initialization
+  │ AfterRestart     │  AfterRestartAsync() - re-initialization
   └──────┬───────────┘
          │
          ▼
   ┌──────────────────┐
-  │ Running           │  Resumes processing messages
+  │ Running          │  Resumes processing messages
   └──────────────────┘
 ```
 
@@ -101,6 +101,56 @@ public override async ValueTask AfterRestartAsync(CancellationToken cancellation
     await _connection.OpenAsync(cancellationToken);
 }
 ```
+
+## Automatic Disposal
+
+If your actor implements `IDisposable` or `IAsyncDisposable`, Trupe will automatically call the corresponding disposal method when the actor is stopped or replaced during a restart. You do not need to manually clean up resources in lifecycle hooks — just implement the standard .NET disposal interfaces:
+
+```csharp
+public class ConnectionActor : Actor, IHandleActorMessage<Query>, IAsyncDisposable
+{
+    private DbConnection _connection = null!;
+
+    public override async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        _connection = new SqlConnection("...");
+        await _connection.OpenAsync(cancellationToken);
+    }
+
+    public ValueTask HandleAsync(Query message, CancellationToken cancellationToken = default)
+    {
+        // Use _connection...
+        return ValueTask.CompletedTask;
+    }
+
+    // Trupe calls this automatically when the actor is stopped or restarted
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection is not null)
+        {
+            await _connection.CloseAsync();
+            await _connection.DisposeAsync();
+        }
+    }
+}
+```
+
+The same applies to `IDisposable`:
+
+```csharp
+public class FileActor : Actor, IDisposable
+{
+    private StreamWriter _writer = null!;
+
+    // Trupe calls this automatically on stop or restart
+    public void Dispose()
+    {
+        _writer?.Dispose();
+    }
+}
+```
+
+> **Tip:** If your actor holds unmanaged resources or expensive connections, prefer implementing `IAsyncDisposable` or `IDisposable` over manually cleaning up in `BeforeRestartAsync`. Trupe guarantees the disposal method will be called.
 
 ## Restart Behavior
 

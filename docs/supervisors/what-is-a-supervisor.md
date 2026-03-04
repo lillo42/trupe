@@ -10,16 +10,16 @@ The actor model takes a different approach: **let it crash**. Instead of trying 
 
 ```
                 ┌────────────────────┐
-                │   Root Supervisor   │
+                │   Root Supervisor  │
                 └──────┬─────────────┘
                        │
             ┌──────────┼──────────┐
             │          │          │
             ▼          ▼          ▼
       ┌──────────┐ ┌──────────┐ ┌──────────┐
-      │Supervisor│ │Supervisor│ │  Actor C  │
-      │    A     │ │    B     │ │           │
-      └─────┬────┘ └────┬─────┘ └──────────┘
+      │Supervisor│ │Supervisor│ │  Actor C │
+      │    A     │ │    B     │ │          │
+      └─────┬────┘ └─────┬────┘ └──────────┘
             │            │
         ┌───┴───┐    ┌───┴───┐
         │       │    │       │
