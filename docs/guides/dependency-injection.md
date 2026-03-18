@@ -47,6 +47,24 @@ services.AddTrupe(config =>
 });
 ```
 
+## Per-Message Scoped Services
+
+Each message processed by an actor gets its own DI scope through `Context.ServiceProvider`. This allows you to resolve scoped services (such as `DbContext`) within a message handler:
+
+```csharp
+public class OrderActor : Actor, IHandleActorMessage<PlaceOrder>
+{
+    public async ValueTask HandleAsync(PlaceOrder message, CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = Context.ServiceProvider.GetRequiredService<AppDbContext>();
+        dbContext.Orders.Add(message.Order);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+}
+```
+
+The scope is automatically disposed after the message has been processed, so scoped services follow their expected lifetime.
+
 ## Actor Constructor Injection
 
 Actors support standard constructor injection. Any service registered in the DI container can be injected:

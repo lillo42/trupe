@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Trupe.Abstractions;
 
@@ -13,7 +14,7 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor);
+        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
 
         // Act
         actorSystem.Start();
@@ -29,7 +30,7 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor);
+        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
         actorSystem.Start();
 
         // Act & Assert
@@ -44,7 +45,7 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor);
+        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
         actorSystem.Start();
 
         // Act
@@ -60,7 +61,7 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor);
+        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
 
         // Act & Assert - should not throw
         await actorSystem.StopAsync();

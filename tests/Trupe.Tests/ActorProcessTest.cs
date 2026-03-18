@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.ActorReferences;
 using Trupe.Mailboxes;
@@ -56,7 +57,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox)),
+            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -86,7 +87,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox)),
+            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -117,7 +118,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox)),
+            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -146,7 +147,7 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox)),
+            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);

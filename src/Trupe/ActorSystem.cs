@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.SystemMessages;
 using Trupe.ActorReferences;
@@ -11,19 +12,15 @@ namespace Trupe;
 /// <summary>
 /// Manages the lifecycle of the actor system, including starting and stopping the root supervisor.
 /// </summary>
-public class ActorSystem
+/// <remarks>
+/// Initializes a new instance of the <see cref="ActorSystem"/> class.
+/// </remarks>
+/// <param name="rootSupervisor">The root supervisor that manages the actor hierarchy.</param>
+/// <param name="serviceProvider">The service provider used to create DI scopes for actors.</param>
+public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider serviceProvider)
 {
     private ActorProcess? _process;
-    private readonly IRootSupervisor _rootSupervisor;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ActorSystem"/> class.
-    /// </summary>
-    /// <param name="rootSupervisor">The root supervisor that manages the actor hierarchy.</param>
-    public ActorSystem(IRootSupervisor rootSupervisor)
-    {
-        _rootSupervisor = rootSupervisor;
-    }
+    private readonly IRootSupervisor _rootSupervisor = rootSupervisor;
 
     /// <summary>
     /// Starts the actor system by initializing the root supervisor and beginning message processing.
@@ -38,8 +35,12 @@ public class ActorSystem
 
         var mailbox = new ChannelMailbox();
 
-        _rootSupervisor.Context = new ActorContext(new LocalActorReference(mailbox));
-        _process = new ActorProcess(_rootSupervisor!, mailbox);
+        _rootSupervisor.Context = new ActorContext(
+            new LocalActorReference(mailbox),
+            serviceProvider.CreateAsyncScope()
+        );
+
+        _process = new ActorProcess(_rootSupervisor, mailbox);
         _process.Start(new LocalTellMessage(new InitializeActor()));
     }
 
