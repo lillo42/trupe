@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Abstractions;
@@ -57,6 +58,16 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// </remarks>
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
     {
+        return Ask<TResponse>(request, null, timeout);
+    }
+
+    /// <inheritdoc />
+    public TResponse Ask<TResponse>(
+        object request,
+        Dictionary<string, object>? metadata,
+        TimeSpan? timeout = null
+    )
+    {
         var cts = new CancellationTokenSource();
         if (timeout.HasValue)
         {
@@ -65,7 +76,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
 
         try
         {
-            var result = AskAsync<TResponse>(request, cts.Token);
+            var result = AskAsync<TResponse>(request, metadata, cts.Token);
             if (result.IsCompletedSuccessfully)
             {
                 return result.Result;
@@ -102,12 +113,22 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// <exception cref="OperationCanceledException">
     /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>.
     /// </exception>
-    public async ValueTask<TResponse> AskAsync<TResponse>(
+    public ValueTask<TResponse> AskAsync<TResponse>(
         object request,
         CancellationToken cancellationToken = default
     )
     {
-        var message = new LocalAskMessage(request, cancellationToken);
+        return AskAsync<TResponse>(request, null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<TResponse> AskAsync<TResponse>(
+        object request,
+        Dictionary<string, object>? metadata,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var message = new LocalAskMessage(request, metadata ?? [], cancellationToken);
 
         await _mailbox.EnqueueAsync(message, cancellationToken);
 
@@ -136,8 +157,13 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// immediately without additional context switching.
     /// </para>
     /// </remarks>
-    public void Tell<TMessage>(TMessage message, TimeSpan? timeout = null)
-        where TMessage : notnull
+    public void Tell(object message, TimeSpan? timeout = null)
+    {
+        Tell(message, null, timeout);
+    }
+
+    /// <inheritdoc />
+    public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
     {
         var cts = new CancellationTokenSource();
         if (timeout.HasValue)
@@ -147,7 +173,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
 
         try
         {
-            var task = TellAsync(message, cts.Token);
+            var task = TellAsync(message, null, cts.Token);
             if (task.IsCompletedSuccessfully)
             {
                 return;
@@ -195,14 +221,20 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>
     /// before the message is successfully enqueued.
     /// </exception>
-    public ValueTask TellAsync<TMessage>(
-        TMessage message,
+    public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
+    {
+        return TellAsync(message, null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask TellAsync(
+        object message,
+        Dictionary<string, object>? metadata,
         CancellationToken cancellationToken = default
     )
-        where TMessage : notnull
     {
         return _mailbox.EnqueueAsync(
-            new LocalTellMessage(message, CancellationToken.None),
+            new LocalTellMessage(message, metadata ?? [], CancellationToken.None),
             cancellationToken
         );
     }

@@ -268,7 +268,7 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert - factory called: 1 (init) + 1 (restart) = 2
@@ -460,7 +460,7 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert - factory: 2 (init) + 1 (restart) = 3
@@ -484,7 +484,7 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert - factory: 2 (init) + 2 (restart all) = 4
@@ -500,7 +500,7 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var askMessage = new LocalAskMessage("test", CancellationToken.None);
+        var askMessage = new LocalAskMessage("test", [], CancellationToken.None);
 
         // Act
         await supervisor.HandleAsync(
@@ -521,8 +521,8 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var nestedAskMessage = new LocalAskMessage("nested", CancellationToken.None);
-        var tellMessage = new LocalTellMessage("test");
+        var nestedAskMessage = new LocalAskMessage("nested", [], CancellationToken.None);
+        var tellMessage = new LocalTellMessage("test", []);
         var escalateException = new EscalateFailureException(
             "escalated",
             child.Reference,
@@ -553,7 +553,7 @@ public class PartitionSupervisorTest
         // Act & Assert — should not throw
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(unknownActor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(unknownActor, new LocalTellMessage("test", []), new Exception("fail"))
         );
     }
 
@@ -575,7 +575,7 @@ public class PartitionSupervisorTest
         // First failure - restart
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail1"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail1"))
         );
 
         // Second failure - should escalate (child.Actor is now the new actor)
@@ -584,7 +584,7 @@ public class PartitionSupervisorTest
                 (object)
                     new ActorFailed(
                         child.Actor,
-                        new LocalTellMessage("test"),
+                        new LocalTellMessage("test", []),
                         new Exception("fail2")
                     )
             );
@@ -795,7 +795,7 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
         var innerException = new InvalidOperationException("inner");
 
         // Act & Assert
@@ -948,7 +948,7 @@ public class PartitionSupervisorTest
         supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
 
         var actor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
         var exception = new Exception("fail");
         var args = new ActorFailureEventArgs(actor, tellMessage, exception);
 

@@ -66,7 +66,7 @@ public class ActorProcessTest
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(message), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(message, []), CancellationToken.None);
 
         // Allow some time for the message to be processed
         await Task.Delay(100);
@@ -96,7 +96,7 @@ public class ActorProcessTest
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        var askMessage = new LocalAskMessage(message, cancellationToken);
+        var askMessage = new LocalAskMessage(message, [], cancellationToken);
         await mailbox.EnqueueAsync(askMessage, cancellationToken);
 
         // Allow some time for the message to be processed
@@ -127,7 +127,7 @@ public class ActorProcessTest
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(message), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(message, []), CancellationToken.None);
 
         // Allow some time for the message to be processed
         await Task.Delay(100);
@@ -156,7 +156,7 @@ public class ActorProcessTest
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        var askMessage = new LocalAskMessage(message, cancellationToken);
+        var askMessage = new LocalAskMessage(message, [], cancellationToken);
         await mailbox.EnqueueAsync(askMessage, cancellationToken);
 
         // Allow some time for the message to be processed

@@ -270,7 +270,7 @@ public class SupervisorTest
         supervisor.CreateActor(spec, reference);
 
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
         var failedMessage = new ActorFailed(
             child.Actor,
             tellMessage,
@@ -578,7 +578,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -608,7 +608,7 @@ public class SupervisorTest
             new LocalActorReference(mailbox2)
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -638,7 +638,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -668,7 +668,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -695,7 +695,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var askMessage = new LocalAskMessage("test", CancellationToken.None);
+        var askMessage = new LocalAskMessage("test", [], CancellationToken.None);
 
         // Act
         await supervisor.HandleAsync(
@@ -722,8 +722,8 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var nestedAskMessage = new LocalAskMessage("nested", CancellationToken.None);
-        var tellMessage = new LocalTellMessage("test");
+        var nestedAskMessage = new LocalAskMessage("nested", [], CancellationToken.None);
+        var tellMessage = new LocalTellMessage("test", []);
 
         var escalateException = new EscalateFailureException(
             "escalated",
@@ -746,7 +746,7 @@ public class SupervisorTest
         // Arrange
         var supervisor = CreateSupervisor();
         var unknownActor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // Act & Assert - should not throw
         await supervisor.HandleAsync(
@@ -773,7 +773,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
 
         // First failure - restart
         await supervisor.HandleAsync(
@@ -1073,7 +1073,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
         var innerException = new InvalidOperationException("inner");
 
         // Act & Assert
@@ -1316,7 +1316,7 @@ public class SupervisorTest
         supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
 
         var actor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new LocalTellMessage("test", []);
         var exception = new Exception("fail");
         var args = new ActorFailureEventArgs(actor, tellMessage, exception);
 

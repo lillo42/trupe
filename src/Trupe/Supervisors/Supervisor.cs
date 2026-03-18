@@ -583,8 +583,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         child.Process.Terminate += HandleTermination;
 
         child.Process.Start(
-            new LocalTellMessage(new InitializeActor()),
-            new LocalTellMessage(new AfterRestartActor())
+            new LocalTellMessage(new InitializeActor(), []),
+            new LocalTellMessage(new AfterRestartActor(), [])
         );
         Log.ActorProcessStarted(Logger);
     }
@@ -689,7 +689,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         );
         Children = Children.Add(metadata);
 
-        process.Start(new LocalTellMessage(new InitializeActor()));
+        process.Start(new LocalTellMessage(new InitializeActor(), []));
 
         return metadata;
     }

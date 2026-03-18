@@ -379,7 +379,7 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert — removed from children, actor disposed, refs nulled
@@ -411,7 +411,7 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert — still in children (restarted by base)
@@ -440,7 +440,7 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
         );
 
         // Assert — still in children (restarted by base)

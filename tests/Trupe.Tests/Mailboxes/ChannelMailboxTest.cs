@@ -13,7 +13,7 @@ public class ChannelMailboxTest
     {
         var mailbox = new ChannelMailbox();
 
-        var message = new LocalTellMessage(new object());
+        var message = new LocalTellMessage(new object(), []);
 
         await mailbox.EnqueueAsync(message, cancellationToken);
 
@@ -29,7 +29,7 @@ public class ChannelMailboxTest
     public async Task DequeueEnqueue_Should_Successed(CancellationToken cancellationToken)
     {
         var mailbox = new ChannelMailbox();
-        var message = new LocalTellMessage(new object());
+        var message = new LocalTellMessage(new object(), []);
 
         var dequeueTask = Task.Run(
             async () =>

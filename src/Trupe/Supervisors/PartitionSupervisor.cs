@@ -402,7 +402,7 @@ public abstract partial class PartitionSupervisor<
         );
         Children = Children.Add(child);
 
-        process.Start(new LocalTellMessage(new InitializeActor()));
+        process.Start(new LocalTellMessage(new InitializeActor(), []));
 
         return child;
     }
@@ -601,8 +601,8 @@ public abstract partial class PartitionSupervisor<
         child.Process.Terminate += HandleTermination;
 
         child.Process.Start(
-            new LocalTellMessage(new InitializeActor()),
-            new LocalTellMessage(new AfterRestartActor())
+            new LocalTellMessage(new InitializeActor(), []),
+            new LocalTellMessage(new AfterRestartActor(), [])
         );
 
         PartitionLog.ActorProcessStarted(Logger);

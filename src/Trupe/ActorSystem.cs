@@ -41,7 +41,7 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         );
 
         _process = new ActorProcess(_rootSupervisor, mailbox);
-        _process.Start(new LocalTellMessage(new InitializeActor()));
+        _process.Start(new LocalTellMessage(new InitializeActor(), []));
     }
 
     /// <summary>

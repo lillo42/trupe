@@ -133,6 +133,8 @@ await greeterRef.TellAsync(new Greet("World"));
 
 `Tell` is non-blocking — the message is enqueued in the actor's mailbox and the caller continues immediately.
 
+All `Tell` and `Ask` methods accept an optional `metadata` parameter of type `Dictionary<string, object>?` for attaching contextual information (e.g., correlation IDs) without modifying your message types.
+
 ## Using Dependency Injection
 
 Actors support constructor injection. Register dependencies in the DI container and they will be resolved when the actor is created:

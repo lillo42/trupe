@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Abstractions.Events;
@@ -17,8 +18,8 @@ namespace Trupe.Abstractions;
 /// address and communication patterns.
 /// </para>
 /// <para>
-/// This interface supports both fire-and-forget (<see cref="Tell{TMessage}"/>)
-/// and request-response (<see cref="Ask{TResponse}"/>) messaging patterns.
+/// This interface supports both fire-and-forget (<see cref="Tell(object, TimeSpan?)"/>)
+/// and request-response (<see cref="Ask{TResponse}(object, TimeSpan?)"/>) messaging patterns.
 /// </para>
 /// </remarks>
 public interface IActorReference : IEquatable<IActorReference>
@@ -56,6 +57,22 @@ public interface IActorReference : IEquatable<IActorReference>
     TResponse Ask<TResponse>(object request, TimeSpan? timeout = null);
 
     /// <summary>
+    /// Sends a request message with metadata to the actor and synchronously waits for a response.
+    /// </summary>
+    /// <typeparam name="TResponse">The type of the expected response.</typeparam>
+    /// <param name="request">The request message to send to the actor.</param>
+    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
+    /// <param name="timeout">
+    /// Optional timeout for the operation. If the timeout expires, a <see cref="TimeoutException"/> is thrown.
+    /// </param>
+    /// <returns>The response from the actor.</returns>
+    TResponse Ask<TResponse>(
+        object request,
+        Dictionary<string, object>? metadata,
+        TimeSpan? timeout = null
+    );
+
+    /// <summary>
     /// Asynchronously sends a request message to the actor and waits for a response.
     /// </summary>
     /// <typeparam name="TResponse">The type of the expected response.</typeparam>
@@ -84,23 +101,45 @@ public interface IActorReference : IEquatable<IActorReference>
     );
 
     /// <summary>
+    /// Asynchronously sends a request message with metadata to the actor and waits for a response.
+    /// </summary>
+    /// <typeparam name="TResponse">The type of the expected response.</typeparam>
+    /// <param name="request">The request message to send to the actor.</param>
+    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+    /// <returns>A <see cref="ValueTask{TResult}"/> containing the response from the actor.</returns>
+    ValueTask<TResponse> AskAsync<TResponse>(
+        object request,
+        Dictionary<string, object>? metadata,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
     /// Sends a message to the actor using fire-and-forget semantics with a timeout
     /// for message delivery to the mailbox.
     /// </summary>
-    /// <typeparam name="TMessage">The type of message to send. Must be a non-nullable type.</typeparam>
     /// <param name="message">The message to send to the actor.</param>
     /// <param name="timeout">
     /// The maximum time to wait for the message to be enqueued in the actor's mailbox.
     /// If <see langword="null"/>, the method will wait indefinitely.
     /// </param>
-    void Tell<TMessage>(TMessage message, TimeSpan? timeout = null)
-        where TMessage : notnull;
+    void Tell(object message, TimeSpan? timeout = null);
+
+    /// <summary>
+    /// Sends a message with metadata to the actor using fire-and-forget semantics.
+    /// </summary>
+    /// <param name="message">The message to send to the actor.</param>
+    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
+    /// <param name="timeout">
+    /// The maximum time to wait for the message to be enqueued in the actor's mailbox.
+    /// If <see langword="null"/>, the method will wait indefinitely.
+    /// </param>
+    void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a message to the actor using fire-and-forget semantics
     /// with cancellation support.
     /// </summary>
-    /// <typeparam name="TMessage">The type of message to send. Must be a non-nullable type.</typeparam>
     /// <param name="message">The message to send to the actor.</param>
     /// <param name="cancellationToken">
     /// A cancellation token that can be used to cancel the enqueue operation.
@@ -125,6 +164,18 @@ public interface IActorReference : IEquatable<IActorReference>
     /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>
     /// before the message is successfully enqueued.
     /// </exception>
-    ValueTask TellAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
-        where TMessage : notnull;
+    ValueTask TellAsync(object message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asynchronously sends a message with metadata to the actor using fire-and-forget semantics.
+    /// </summary>
+    /// <param name="message">The message to send to the actor.</param>
+    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the enqueue operation.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when the message has been queued.</returns>
+    ValueTask TellAsync(
+        object message,
+        Dictionary<string, object>? metadata,
+        CancellationToken cancellationToken = default
+    );
 }

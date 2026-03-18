@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Trupe.Abstractions.Messages;
@@ -29,6 +30,15 @@ public interface IMessage
     /// </summary>
     /// <value>The user-defined message object.</value>
     object Payload { get; }
+
+    /// <summary>
+    /// Gets the metadata dictionary associated with the message.
+    /// </summary>
+    /// <value>
+    /// A dictionary of key-value pairs containing additional contextual information
+    /// attached to the message by the sender.
+    /// </value>
+    Dictionary<string, object> Metadata { get; }
 
     /// <summary>
     /// Gets the cancellation token associated with the message.

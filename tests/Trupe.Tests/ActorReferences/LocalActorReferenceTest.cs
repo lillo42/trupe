@@ -44,7 +44,7 @@ public class LocalActorReferenceTest
         var actorRef = new LocalActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
         await Assert
             .That(() => actorRef.Tell(message, TimeSpan.FromSeconds(1)))
             .Throws<TimeoutException>();
@@ -84,7 +84,7 @@ public class LocalActorReferenceTest
         var actorRef = new LocalActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert
@@ -138,7 +138,7 @@ public class LocalActorReferenceTest
         var actorRef = new LocalActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
         await Assert
             .That(() => actorRef.Ask<object>(message, TimeSpan.FromSeconds(1)))
             .Throws<TimeoutException>();
@@ -190,7 +190,7 @@ public class LocalActorReferenceTest
         var actorRef = new LocalActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object()), CancellationToken.None);
+        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert
             .That(async () => await actorRef.AskAsync<object>(message, cts.Token).AsTask())
