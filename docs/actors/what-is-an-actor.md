@@ -72,10 +72,11 @@ This provides:
 Every actor has access to a `Context` object of type `IActorContext`:
 
 ```csharp
-public class ActorContext(IActorReference self) : IActorContext
+public interface IActorContext : IAsyncDisposable
 {
-    public IActorReference Self { get; }
-    public object? Response { get; set; }
+    IActorReference Self { get; }
+    object? Response { get; set; }
+    IServiceProvider ServiceProvider { get; }
 }
 ```
 
@@ -83,6 +84,9 @@ public class ActorContext(IActorReference self) : IActorContext
 |----------|-------------|
 | `Self` | The actor's own `IActorReference`. Useful for passing your reference to other actors. |
 | `Response` | Set this property to provide a return value when responding to an `Ask` request. |
+| `ServiceProvider` | A scoped `IServiceProvider` for the current message. Use it to resolve scoped services within a message handler. |
+
+A new `IActorContext` (and its associated DI scope) is created for **each message** processed by the actor. This means scoped services resolved through `Context.ServiceProvider` are isolated per message and automatically disposed after processing.
 
 ## Communicating with Actors
 

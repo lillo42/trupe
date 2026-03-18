@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
@@ -202,6 +203,9 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     {
         actor.Context.Response = null;
 
+        var context = actor.Context;
+        var newContext = new ActorContext(context.Self, context.ServiceProvider.CreateAsyncScope());
+
         try
         {
             if (message.Payload is InitializeActor)
@@ -219,6 +223,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             }
             else if (RuntimeFeature.IsDynamicCodeSupported)
             {
+                actor.Context = newContext;
                 var callHandle = _typedCallHandle.GetOrAdd(
                     message.Payload.GetType(),
                     CreateCallHandleDelegate
@@ -228,6 +233,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             }
             else
             {
+                actor.Context = newContext;
                 await actor.HandleAsync(message.Payload, cancellationToken);
             }
 
@@ -236,7 +242,8 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
                 askMessage.SetResult(actor.Context.Response);
             }
 
-            actor.Context.Response = null;
+            actor.Context = context;
+            await newContext.DisposeAsync();
         }
         catch (AskException ex)
         {
@@ -247,6 +254,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            actor.Context = context;
             Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
             return false;
         }

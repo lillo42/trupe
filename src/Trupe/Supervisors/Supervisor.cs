@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
@@ -214,11 +215,14 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
             await metadata.Process.DisposeAsync();
 
+            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
+
             metadata.Process = null!;
             metadata.Metadata.Clear();
         }
 
+        await Context.DisposeAsync();
         Children = [];
     }
 
@@ -566,7 +570,10 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
         Log.CreatingNewActorInstance(Logger);
         child.Actor = ActorFactory.CreateActor(child.ActorType);
-        child.Actor.Context = new ActorContext(child.Reference);
+        child.Actor.Context = new ActorContext(
+            child.Reference,
+            Context.ServiceProvider.CreateAsyncScope()
+        );
         Log.ActorCreatedWithSuccess(Logger);
 
         await child.Process.DisposeAsync();
@@ -666,7 +673,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     )
     {
         var actor = ActorFactory.CreateActor(specification.ActorType);
-        actor.Context = new ActorContext(reference);
+        actor.Context = new ActorContext(reference, Context.ServiceProvider.CreateAsyncScope());
 
         var process = new ActorProcess(actor, specification.Mailbox);
         process.Failure += HandleFailure;

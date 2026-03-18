@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Trupe.Abstractions;
@@ -104,7 +105,7 @@ public class DynamicSupervisorTest
         var logger = Substitute.For<ILogger>();
         var supervisor = new TestDynamicSupervisor(factory, logger, onInitialize);
         selfMailbox ??= new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox));
+        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
         return supervisor;
     }
 

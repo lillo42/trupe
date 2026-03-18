@@ -1,3 +1,5 @@
+using System;
+
 namespace Trupe.Abstractions;
 
 /// <summary>
@@ -7,7 +9,7 @@ namespace Trupe.Abstractions;
 /// This context is injected into the actor's message handling logic. It provides access to the actor's
 /// own identity and a mechanism to return data to the caller when the Request-Response (<c>Ask</c>) pattern is used.
 /// </remarks>
-public interface IActorContext
+public interface IActorContext : IAsyncDisposable
 {
     /// <summary>
     /// Gets the reference to the current actor instance.
@@ -35,4 +37,13 @@ public interface IActorContext
     /// </para>
     /// </remarks>
     object? Response { get; set; }
+
+    /// <summary>
+    /// Gets the <see cref="IServiceProvider"/> scoped to the current message being processed.
+    /// </summary>
+    /// <remarks>
+    /// A new scope is created for each message, so services resolved through this provider
+    /// follow the standard scoped lifetime. The scope is disposed after message processing completes.
+    /// </remarks>
+    IServiceProvider ServiceProvider { get; }
 }

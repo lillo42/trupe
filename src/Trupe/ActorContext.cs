@@ -1,4 +1,9 @@
-namespace Trupe.Abstractions;
+using System;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Trupe.Abstractions;
+
+namespace Trupe;
 
 /// <summary>
 /// Provides a concrete implementation of the execution context for an actor.
@@ -14,7 +19,8 @@ namespace Trupe.Abstractions;
 /// </para>
 /// </remarks>
 /// <param name="self">The reference to the actor this context belongs to.</param>
-public class ActorContext(IActorReference self) : IActorContext
+/// <param name="scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
+public record ActorContext(IActorReference self, IServiceScope scope) : IActorContext
 {
     /// <inheritdoc />
     public IActorReference Self { get; } = self;
@@ -28,4 +34,21 @@ public class ActorContext(IActorReference self) : IActorContext
     /// Defaults to <c>null</c>.
     /// </remarks>
     public object? Response { get; set; }
+
+    /// <inheritdoc />
+    public IServiceProvider ServiceProvider => scope.ServiceProvider;
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        if (scope is IAsyncDisposable asyncDisposable)
+        {
+            return asyncDisposable.DisposeAsync();
+        }
+        else
+        {
+            scope.Dispose();
+            return new ValueTask();
+        }
+    }
 }

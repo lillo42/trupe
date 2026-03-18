@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Trupe.Abstractions;
@@ -164,7 +165,7 @@ public class PartitionSupervisorTest
             onInitialize
         );
         selfMailbox ??= new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox));
+        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
         return supervisor;
     }
 
@@ -184,7 +185,7 @@ public class PartitionSupervisorTest
         actor ??= new SimpleActor();
         mailbox ??= new ChannelMailbox();
         var reference = new LocalActorReference(mailbox);
-        actor.Context = new ActorContext(reference);
+        actor.Context = new ActorContext(reference, new ServiceCollection().BuildServiceProvider().CreateScope());
         var process = new ActorProcess(actor, mailbox);
         return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
     }
@@ -944,7 +945,7 @@ public class PartitionSupervisorTest
         // Arrange
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox));
+        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
 
         var actor = new SimpleActor();
         var tellMessage = new LocalTellMessage("test");
@@ -972,7 +973,7 @@ public class PartitionSupervisorTest
         // Arrange
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox));
+        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
 
         var actor = new SimpleActor();
         var args = new ActorTerminateEventArgs(actor, "shutdown");
@@ -1092,7 +1093,7 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var mailbox = Substitute.For<IMailbox>();
         var supervisorActor = new SimpleSupervisorActor();
-        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
+        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(supervisorActor, new ChannelMailbox());
         var child = new Child(
@@ -1118,7 +1119,7 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var mailbox = Substitute.For<IMailbox>();
         var simpleActor = new SimpleActor();
-        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()));
+        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
         var child = new Child(
