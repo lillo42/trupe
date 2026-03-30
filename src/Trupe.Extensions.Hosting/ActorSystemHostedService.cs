@@ -14,7 +14,7 @@ public class ActorSystemHostedService(ActorSystem system) : IHostedService
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        system.Start();
+        system.StartAsync();
         return Task.CompletedTask;
     }
 

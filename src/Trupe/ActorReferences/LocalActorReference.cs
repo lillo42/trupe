@@ -148,7 +148,7 @@ public class LocalActorReference(IMailbox mailbox) : IActorReference
     /// <remarks>
     /// <para>
     /// This implementation creates a <see cref="CancellationTokenSource"/> with the specified
-    /// timeout and uses it to call the cancellable <see cref="TellAsync{TMessage}(TMessage, CancellationToken)"/>
+    /// timeout and uses it to call the cancellable <see cref="TellAsync(object, Dictionary{string, object}?, CancellationToken)"/>
     /// method. If the timeout expires, a <see cref="TimeoutException"/> is thrown.
     /// </para>
     /// <para>

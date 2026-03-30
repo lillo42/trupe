@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Supervisors;
@@ -18,11 +17,9 @@ namespace Trupe;
 /// <param name="options">The options containing the child actor specifications.</param>
 /// <param name="actorFactory">The factory used to create actor instances.</param>
 /// <param name="logger">The logger instance.</param>
-public class RootSupervisor(
-    IOptions<RootSupervisorOptions> options,
-    IActorFactory actorFactory,
-    ILogger<RootSupervisor> logger
-) : Supervisor(actorFactory, logger), IRootSupervisor
+public class RootSupervisor(IOptions<RootSupervisorOptions> options, ILogger<RootSupervisor> logger)
+    : Supervisor(logger),
+        IRootSupervisor
 {
     /// <inheritdoc />
     protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)

@@ -41,7 +41,7 @@ namespace Trupe.Supervisors;
 /// </remarks>
 /// <param name="actorFactory">Factory used to create actor instances.</param>
 /// <param name="logger">Logger for supervisor operations.</param>
-public abstract partial class Supervisor(IActorFactory actorFactory, ILogger logger)
+public abstract partial class Supervisor(ILogger logger)
     : Actor,
         ISupervisor,
         IHandleActorMessage<AddActor>,
@@ -62,7 +62,8 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <summary>
     /// Gets the factory used to create actor instances.
     /// </summary>
-    protected virtual IActorFactory ActorFactory { get; } = actorFactory;
+    protected virtual IActorFactory ActorFactory =>
+        Context.ServiceProvider.GetRequiredService<IActorFactory>();
 
     /// <summary>
     /// Gets the supervision strategy used when a child actor fails.
@@ -139,11 +140,12 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="message">The command containing actor creation details.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A completed task.</returns>
-    public virtual ValueTask HandleAsync(AddActor message, CancellationToken cancellationToken)
+    public virtual async ValueTask HandleAsync(
+        AddActor message,
+        CancellationToken cancellationToken
+    )
     {
-        CreateActor(message.Specification, (LocalActorReference)message.Reference);
-
-        return new ValueTask();
+        await CreateActorAsync(message.Specification, (LocalActorReference)message.Reference);
     }
 
     /// <summary>
@@ -212,17 +214,16 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         {
             await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+            await DisposeObjectAsync(metadata.Actor.Context);
 
             await metadata.Process.DisposeAsync();
 
-            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
 
             metadata.Process = null!;
             metadata.Metadata.Clear();
         }
 
-        await Context.DisposeAsync();
         Children = [];
     }
 
@@ -413,7 +414,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         Log.StoppingActor(Logger);
         metadata.Process.Failure -= HandleFailure;
-        metadata.Process.Terminate -= HandleTermination;
+        metadata.Process.Terminated -= HandleTermination;
         await metadata.Process.StopAsync();
         Log.ActorStopped(Logger);
     }
@@ -427,7 +428,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     {
         Log.ResumingActor(Logger);
         await child.Process.StopAsync();
-        child.Process.Start();
+        await child.Process.StartAsync();
         Log.ActorResumed(Logger);
     }
 
@@ -580,9 +581,9 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         Log.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
         child.Process.Failure += HandleFailure;
-        child.Process.Terminate += HandleTermination;
+        child.Process.Terminated += HandleTermination;
 
-        child.Process.Start(
+        await child.Process.StartAsync(
             new LocalTellMessage(new InitializeActor(), []),
             new LocalTellMessage(new AfterRestartActor(), [])
         );
@@ -667,7 +668,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
     /// <param name="specification">The specification defining the actor to create.</param>
     /// <param name="reference">The local actor reference to associate with the child.</param>
     /// <returns>The metadata for the created child actor.</returns>
-    protected virtual Child CreateActor(
+    protected virtual async Task<Child> CreateActorAsync(
         IChildSpecification specification,
         LocalActorReference reference
     )
@@ -677,7 +678,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
 
         var process = new ActorProcess(actor, specification.Mailbox);
         process.Failure += HandleFailure;
-        process.Terminate += HandleTermination;
+        process.Terminated += HandleTermination;
 
         var metadata = new Child(
             actor,
@@ -689,7 +690,7 @@ public abstract partial class Supervisor(IActorFactory actorFactory, ILogger log
         );
         Children = Children.Add(metadata);
 
-        process.Start(new LocalTellMessage(new InitializeActor(), []));
+        await process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
 
         return metadata;
     }

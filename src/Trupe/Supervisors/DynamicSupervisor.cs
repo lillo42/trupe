@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.ActorReferences;
@@ -16,10 +15,9 @@ namespace Trupe.Supervisors;
 /// A supervisor that allows dynamic addition of child actors at runtime.
 /// Uses the <see cref="Strategy.OneForOne"/> supervision strategy.
 /// </summary>
-/// <param name="actorFactory">The factory used to create child actors.</param>
 /// <param name="logger">The logger instance for logging supervisor activities.</param>
-public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logger)
-    : Supervisor(actorFactory, logger),
+public abstract class DynamicSupervisor(ILogger logger)
+    : Supervisor(logger),
         IHandleActorMessage<RemoveChild>
 {
     /// <inheritdoc />
@@ -44,6 +42,8 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
 
             await StopActorAsync(child);
             await DisposeObjectAsync(child.Actor);
+            await DisposeObjectAsync(child.Actor.Context);
+
             await child.Process.DisposeAsync();
 
             child.Actor = null!;
@@ -82,6 +82,8 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
             Children = Children.Remove(child);
 
             await DisposeObjectAsync(child.Actor);
+            await DisposeObjectAsync(child.Actor.Context);
+
             child.Actor = null!;
             child.Process = null!;
         }
@@ -103,6 +105,8 @@ public abstract class DynamicSupervisor(IActorFactory actorFactory, ILogger logg
             Children = Children.Remove(child);
 
             await DisposeObjectAsync(child.Actor);
+            await DisposeObjectAsync(child.Actor.Context);
+
             child.Actor = null!;
             child.Process = null!;
         }

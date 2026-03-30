@@ -108,7 +108,7 @@ public class PartitionSupervisorTest
         public new ImmutableList<Child> Children => base.Children;
 
         public new Child CreateActor(ChildSpecification specification) =>
-            base.CreateActor(specification);
+            base.CreateActorAsync(specification);
 
         public new IActorReference GetActorReference<TKey>(TKey key)
             where TKey : notnull => base.GetActorReference(key);
@@ -165,7 +165,10 @@ public class PartitionSupervisorTest
             onInitialize
         );
         selfMailbox ??= new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(selfMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         return supervisor;
     }
 
@@ -185,7 +188,10 @@ public class PartitionSupervisorTest
         actor ??= new SimpleActor();
         mailbox ??= new ChannelMailbox();
         var reference = new LocalActorReference(mailbox);
-        actor.Context = new ActorContext(reference, new ServiceCollection().BuildServiceProvider().CreateScope());
+        actor.Context = new ActorContext(
+            reference,
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var process = new ActorProcess(actor, mailbox);
         return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
     }
@@ -268,7 +274,11 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert - factory called: 1 (init) + 1 (restart) = 2
@@ -460,7 +470,11 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert - factory: 2 (init) + 1 (restart) = 3
@@ -484,7 +498,11 @@ public class PartitionSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert - factory: 2 (init) + 2 (restart all) = 4
@@ -553,7 +571,11 @@ public class PartitionSupervisorTest
         // Act & Assert — should not throw
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(unknownActor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    unknownActor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
     }
 
@@ -575,7 +597,11 @@ public class PartitionSupervisorTest
         // First failure - restart
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail1"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail1")
+                )
         );
 
         // Second failure - should escalate (child.Actor is now the new actor)
@@ -945,7 +971,10 @@ public class PartitionSupervisorTest
         // Arrange
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(supervisorMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
         var tellMessage = new LocalTellMessage("test", []);
@@ -973,7 +1002,10 @@ public class PartitionSupervisorTest
         // Arrange
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(supervisorMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
         var args = new ActorTerminateEventArgs(actor, "shutdown");
@@ -1093,7 +1125,10 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var mailbox = Substitute.For<IMailbox>();
         var supervisorActor = new SimpleSupervisorActor();
-        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisorActor.Context = new ActorContext(
+            new LocalActorReference(new ChannelMailbox()),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(supervisorActor, new ChannelMailbox());
         var child = new Child(
@@ -1119,7 +1154,10 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var mailbox = Substitute.For<IMailbox>();
         var simpleActor = new SimpleActor();
-        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
+        simpleActor.Context = new ActorContext(
+            new LocalActorReference(new ChannelMailbox()),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
         var child = new Child(

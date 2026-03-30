@@ -95,7 +95,7 @@ public class SupervisorTest
         public new Child CreateActor(
             IChildSpecification specification,
             LocalActorReference reference
-        ) => base.CreateActor(specification, reference);
+        ) => base.CreateActorAsync(specification, reference);
 
         public new ValueTask DisposeObjectAsync(object obj) => base.DisposeObjectAsync(obj);
 
@@ -173,7 +173,10 @@ public class SupervisorTest
         );
 
         var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(mailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
 
         return supervisor;
     }
@@ -187,7 +190,10 @@ public class SupervisorTest
         actor ??= new SimpleActor();
         mailbox ??= new ChannelMailbox();
         var reference = new LocalActorReference(mailbox);
-        actor.Context = new ActorContext(reference, new ServiceCollection().BuildServiceProvider().CreateScope());
+        actor.Context = new ActorContext(
+            reference,
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var process = new ActorProcess(actor, mailbox);
         return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
     }
@@ -1203,7 +1209,10 @@ public class SupervisorTest
         var supervisor = CreateSupervisor();
         var mailbox = Substitute.For<IMailbox>();
         var supervisorActor = new SimpleSupervisorActor();
-        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisorActor.Context = new ActorContext(
+            new LocalActorReference(new ChannelMailbox()),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(supervisorActor, new ChannelMailbox());
         var child = new Child(
@@ -1229,7 +1238,10 @@ public class SupervisorTest
         var supervisor = CreateSupervisor();
         var mailbox = Substitute.For<IMailbox>();
         var simpleActor = new SimpleActor();
-        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
+        simpleActor.Context = new ActorContext(
+            new LocalActorReference(new ChannelMailbox()),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         var reference = new LocalActorReference(new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
         var child = new Child(
@@ -1313,7 +1325,10 @@ public class SupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(supervisorMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
         var tellMessage = new LocalTellMessage("test", []);
@@ -1341,7 +1356,10 @@ public class SupervisorTest
         // Arrange
         var supervisor = CreateSupervisor();
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(supervisorMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
         var args = new ActorTerminateEventArgs(actor, "shutdown");

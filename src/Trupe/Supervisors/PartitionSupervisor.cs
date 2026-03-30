@@ -32,7 +32,7 @@ namespace Trupe.Supervisors;
 /// <param name="workers">The number of worker actors to create in the partition.</param>
 public abstract partial class PartitionSupervisor<
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
->(IActorFactory actorFactory, ILogger logger, int workers)
+>(ILogger logger, int workers)
     : Actor,
         ISupervisor,
         IHandleActorMessage<ActorFailed>,
@@ -42,7 +42,8 @@ public abstract partial class PartitionSupervisor<
     /// <summary>
     /// Gets the factory used to create child actors.
     /// </summary>
-    protected virtual IActorFactory ActorFactory { get; } = actorFactory;
+    protected virtual IActorFactory ActorFactory =>
+        Context.ServiceProvider.GetRequiredService<IActorFactory>();
 
     /// <summary>
     /// Gets the logger for supervisor operations.
@@ -95,10 +96,9 @@ public abstract partial class PartitionSupervisor<
     /// Initializes a new instance of the <see cref="PartitionSupervisor{TActor}"/> class
     /// with the default number of workers equal to the processor count.
     /// </summary>
-    /// <param name="actorFactory">The factory used to create child actors.</param>
     /// <param name="logger">The logger for supervisor operations.</param>
-    public PartitionSupervisor(IActorFactory actorFactory, ILogger logger)
-        : this(actorFactory, logger, Environment.ProcessorCount) { }
+    public PartitionSupervisor(ILogger logger)
+        : this(logger, Environment.ProcessorCount) { }
 
     /// <summary>
     /// Initializes the supervisor by creating and starting all worker actors.
@@ -109,7 +109,7 @@ public abstract partial class PartitionSupervisor<
     {
         for (var i = 0; i < Workers; i++)
         {
-            CreateActor(
+            await CreateActorAsync(
                 new ChildSpecification(typeof(TActor))
                 {
                     RestartPolicy = DefaultRestartPolicy,
@@ -133,10 +133,9 @@ public abstract partial class PartitionSupervisor<
         foreach (var metadata in Children)
         {
             await StopActorAsync(metadata);
-
             await DisposeObjectAsync(metadata.Actor);
+            await DisposeObjectAsync(metadata.Actor.Context);
 
-            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
             metadata.Process = null!;
             metadata.Metadata.Clear();
@@ -229,16 +228,15 @@ public abstract partial class PartitionSupervisor<
         {
             await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+            await DisposeObjectAsync(metadata.Actor.Context);
 
             await metadata.Process.DisposeAsync();
 
-            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
             metadata.Process = null!;
             metadata.Metadata.Clear();
         }
 
-        await Context.DisposeAsync();
         Children = [];
     }
 
@@ -368,7 +366,7 @@ public abstract partial class PartitionSupervisor<
     /// <returns>The metadata for the created child actor.</returns>
     /// <exception cref="SupervisorAlreadyInitializedException">Thrown if the supervisor has already been initialized.</exception>
     /// <exception cref="TooManyWorkerException">Thrown if the maximum number of workers has been reached.</exception>
-    protected virtual Child CreateActor(ChildSpecification specification)
+    protected virtual async Task<Child> CreateActorAsync(ChildSpecification specification)
     {
         if (_initialized)
         {
@@ -390,7 +388,7 @@ public abstract partial class PartitionSupervisor<
 
         var process = new ActorProcess(actor, specification.Mailbox);
         process.Failure += HandleFailure;
-        process.Terminate += HandleTermination;
+        process.Terminated += HandleTermination;
 
         var child = new Child(
             actor,
@@ -402,7 +400,7 @@ public abstract partial class PartitionSupervisor<
         );
         Children = Children.Add(child);
 
-        process.Start(new LocalTellMessage(new InitializeActor(), []));
+        await process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
 
         return child;
     }
@@ -507,7 +505,7 @@ public abstract partial class PartitionSupervisor<
         PartitionLog.StoppingActor(Logger);
 
         metadata.Process.Failure -= HandleFailure;
-        metadata.Process.Terminate -= HandleTermination;
+        metadata.Process.Terminated -= HandleTermination;
         await metadata.Process.StopAsync();
 
         PartitionLog.ActorStopped(Logger);
@@ -523,7 +521,7 @@ public abstract partial class PartitionSupervisor<
         PartitionLog.ResumingActor(Logger);
 
         await metadata.Process.StopAsync();
-        metadata.Process.Start();
+        await metadata.Process.StartAsync();
 
         PartitionLog.ActorResumed(Logger);
     }
@@ -586,21 +584,25 @@ public abstract partial class PartitionSupervisor<
         await BeforeRestartActorAsync(child);
 
         await DisposeObjectAsync(child.Actor);
+        await DisposeObjectAsync(child.Actor.Context);
 
         await ResetMailboxAsync(child);
 
         PartitionLog.CreatingNewActorInstance(Logger);
         child.Actor = ActorFactory.CreateActor(child.ActorType);
-        child.Actor.Context = new ActorContext(child.Reference, Context.ServiceProvider.CreateAsyncScope());
+        child.Actor.Context = new ActorContext(
+            child.Reference,
+            Context.ServiceProvider.CreateAsyncScope()
+        );
         PartitionLog.ActoCreateWithSuccess(Logger);
 
         await child.Process.DisposeAsync();
         PartitionLog.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
         child.Process.Failure += HandleFailure;
-        child.Process.Terminate += HandleTermination;
+        child.Process.Terminated += HandleTermination;
 
-        child.Process.Start(
+        await child.Process.StartAsync(
             new LocalTellMessage(new InitializeActor(), []),
             new LocalTellMessage(new AfterRestartActor(), [])
         );

@@ -26,7 +26,7 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
     /// Starts the actor system by initializing the root supervisor and beginning message processing.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when the actor system is already running.</exception>
-    public void Start()
+    public async Task StartAsync()
     {
         if (_process != null)
         {
@@ -41,7 +41,7 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         );
 
         _process = new ActorProcess(_rootSupervisor, mailbox);
-        _process.Start(new LocalTellMessage(new InitializeActor(), []));
+        await _process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
     }
 
     /// <summary>

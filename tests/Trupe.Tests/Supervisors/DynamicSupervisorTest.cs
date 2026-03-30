@@ -63,7 +63,7 @@ public class DynamicSupervisorTest
         public new Child CreateActor(
             IChildSpecification specification,
             LocalActorReference reference
-        ) => base.CreateActor(specification, reference);
+        ) => base.CreateActorAsync(specification, reference);
 
         public new void RemoveActor(IActorReference reference) => base.RemoveActor(reference);
 
@@ -105,7 +105,10 @@ public class DynamicSupervisorTest
         var logger = Substitute.For<ILogger>();
         var supervisor = new TestDynamicSupervisor(factory, logger, onInitialize);
         selfMailbox ??= new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new LocalActorReference(selfMailbox),
+            new ServiceCollection().BuildServiceProvider().CreateScope()
+        );
         return supervisor;
     }
 
@@ -379,7 +382,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — removed from children, actor disposed, refs nulled
@@ -411,7 +418,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — still in children (restarted by base)
@@ -440,7 +451,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test", []), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new LocalTellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — still in children (restarted by base)

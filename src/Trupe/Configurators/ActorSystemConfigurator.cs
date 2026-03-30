@@ -3,8 +3,13 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Options;
+using Trupe.Abstractions.Pipelines;
 using Trupe.Extensions;
+using Trupe.Factories;
+using Trupe.Pipelines;
+using Trupe.Pipelines.Middlewares;
 
 namespace Trupe.Configurators;
 
@@ -14,27 +19,57 @@ namespace Trupe.Configurators;
 /// </summary>
 public class ActorSystemConfigurator
 {
-    private readonly IServiceCollection _serviceProvider;
+    private readonly IServiceCollection _serviceCollection;
 
     /// <summary>
     /// Gets the underlying <see cref="IServiceCollection"/> used to register services.
     /// </summary>
-    public IServiceCollection Services => _serviceProvider;
+    public IServiceCollection Services => _serviceCollection;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ActorSystemConfigurator"/> class and registers
     /// the default actor system services.
     /// </summary>
-    /// <param name="serviceProvider">The service collection to register services with.</param>
-    public ActorSystemConfigurator(IServiceCollection serviceProvider)
+    /// <param name="serviceCollection">The service collection to register services with.</param>
+    public ActorSystemConfigurator(IServiceCollection serviceCollection)
     {
-        _serviceProvider = serviceProvider;
+        _serviceCollection = serviceCollection;
 
-        _serviceProvider.TryAddSingleton<ActorSystem>();
-        _serviceProvider.TryAddSingleton<IRootSupervisor, RootSupervisor>();
-        _serviceProvider.TryAddSingleton(_ => ActorRegister.Instance);
+        _serviceCollection.TryAddSingleton<ActorSystem>();
+        _serviceCollection.TryAddSingleton<IRootSupervisor, RootSupervisor>();
+        _serviceCollection.TryAddSingleton(_ => ActorRegister.Instance);
+        _serviceCollection.TryAddTransient<IPipelineFactory, PipelineFactory>();
+        _serviceCollection.TryAddTransient<IPipelineContextFactory, PipelineContextFactory>();
+        _serviceCollection.TryAddSingleton<IPipelineLookup, PipelineRegistry>();
+        _serviceCollection.TryAddSingleton<IActorFactory, DependencyInjectionActorFactory>();
 
-        _serviceProvider.Configure<RootSupervisorOptions>(_ => { });
+        _serviceCollection.TryAddSingleton<SettablePipelineContextAccessor>();
+        _serviceCollection.TryAddSingleton<IPipelineContextAccessor>(provider =>
+            provider.GetRequiredService<SettablePipelineContextAccessor>()
+        );
+
+        _serviceCollection.TryAddSingleton<AskMiddleware>();
+        _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
+        _serviceCollection.Configure<PipelineOptions>(static opt =>
+        {
+            opt.Middlewares.Add(
+                new PipelineMiddlewareConfiguration
+                {
+                    Order = int.MinValue,
+                    MiddlewareType = typeof(AskMiddleware),
+                }
+            );
+
+            opt.Middlewares.Add(
+                new PipelineMiddlewareConfiguration
+                {
+                    Order = int.MaxValue,
+                    MiddlewareType = typeof(ActorMessageDispatcherMiddleware),
+                }
+            );
+        });
+
+        _serviceCollection.Configure<RootSupervisorOptions>(_ => { });
     }
 
     /// <summary>
@@ -47,7 +82,7 @@ public class ActorSystemConfigurator
     >()
         where TActor : class, IActor
     {
-        _serviceProvider.TryAddTransient<TActor>();
+        _serviceCollection.TryAddTransient<TActor>();
         return this;
     }
 
@@ -69,7 +104,7 @@ public class ActorSystemConfigurator
             );
         }
 
-        _serviceProvider.TryAddTransient(actorType);
+        _serviceCollection.TryAddTransient(actorType);
         return this;
     }
 
@@ -114,7 +149,7 @@ public class ActorSystemConfigurator
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator ConfigureRootSupervisor(Action<RootSupervisorOptions> configure)
     {
-        _serviceProvider.Configure(configure);
+        _serviceCollection.Configure(configure);
         return this;
     }
 
@@ -128,7 +163,7 @@ public class ActorSystemConfigurator
     >()
         where TSupervisor : class, IRootSupervisor
     {
-        _serviceProvider.AddSingleton<IRootSupervisor, TSupervisor>();
+        _serviceCollection.AddSingleton<IRootSupervisor, TSupervisor>();
         return this;
     }
 
@@ -150,7 +185,7 @@ public class ActorSystemConfigurator
             );
         }
 
-        _serviceProvider.AddSingleton(typeof(IRootSupervisor), rootSupervisorType);
+        _serviceCollection.AddSingleton(typeof(IRootSupervisor), rootSupervisorType);
         return this;
     }
 
@@ -161,7 +196,110 @@ public class ActorSystemConfigurator
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator SetActorRegister(IActorRegister actorRegister)
     {
-        _serviceProvider.AddSingleton(_ => actorRegister);
+        _serviceCollection.AddSingleton(_ => actorRegister);
+        return this;
+    }
+
+    public ActorSystemConfigurator AddMiddleware<TMiddleware>(TMiddleware middleware)
+        where TMiddleware : class, IMiddleware
+    {
+        _serviceCollection.TryAddSingleton(middleware);
+        return this;
+    }
+
+    public ActorSystemConfigurator AddMiddleware<TMiddleware>(
+        Func<IServiceProvider, TMiddleware> middlewareFactory,
+        ServiceLifetime lifetime = ServiceLifetime.Transient
+    )
+        where TMiddleware : class, IMiddleware
+    {
+        _serviceCollection.TryAdd(
+            new ServiceDescriptor(typeof(TMiddleware), middlewareFactory, lifetime)
+        );
+
+        return this;
+    }
+
+    public ActorSystemConfigurator AddMiddleware(IMiddleware middleware)
+    {
+        _serviceCollection.TryAdd(new ServiceDescriptor(middleware.GetType(), middleware));
+        return this;
+    }
+
+    public ActorSystemConfigurator AddMiddleware(
+        Type middlewareType,
+        ServiceLifetime lifetime = ServiceLifetime.Transient
+    )
+    {
+        _serviceCollection.TryAdd(new ServiceDescriptor(middlewareType, middlewareType, lifetime));
+        return this;
+    }
+
+    public ActorSystemConfigurator AddMiddleware(
+        Type middlewareType,
+        Func<IServiceProvider, object> middlewareFactory,
+        ServiceLifetime lifetime = ServiceLifetime.Transient
+    )
+    {
+        _serviceCollection.TryAdd(
+            new ServiceDescriptor(middlewareType, middlewareFactory, lifetime)
+        );
+        return this;
+    }
+
+    public ActorSystemConfigurator Use<TMiddleware>()
+        where TMiddleware : class, IMiddleware
+    {
+        return Use<TMiddleware>(0, null);
+    }
+
+    public ActorSystemConfigurator Use<TMiddleware>(int order)
+        where TMiddleware : class, IMiddleware
+    {
+        return Use<TMiddleware>(order, null);
+    }
+
+    public ActorSystemConfigurator Use<TMiddleware>(object? metadata)
+        where TMiddleware : class, IMiddleware
+    {
+        return Use<TMiddleware>(0, metadata);
+    }
+
+    public ActorSystemConfigurator Use<TMiddleware>(int order, object? metadata)
+        where TMiddleware : class, IMiddleware
+    {
+        return Use(typeof(TMiddleware), order, metadata);
+    }
+
+    public ActorSystemConfigurator Use(Type middlewareType)
+    {
+        return Use(middlewareType, 0, null);
+    }
+
+    public ActorSystemConfigurator Use(Type middlewareType, int order)
+    {
+        return Use(middlewareType, order, null);
+    }
+
+    public ActorSystemConfigurator Use(Type middlewareType, object? metadata)
+    {
+        return Use(middlewareType, 0, metadata);
+    }
+
+    public ActorSystemConfigurator Use(Type middlewareType, int order, object? metadata)
+    {
+        _serviceCollection.TryAddTransient(middlewareType);
+        _serviceCollection.Configure<PipelineOptions>(opt =>
+            opt.Middlewares.Add(
+                new PipelineMiddlewareConfiguration
+                {
+                    Order = order,
+                    Metadata = metadata,
+                    MiddlewareType = middlewareType,
+                }
+            )
+        );
+
         return this;
     }
 }

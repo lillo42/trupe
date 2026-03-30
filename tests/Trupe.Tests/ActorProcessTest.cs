@@ -57,11 +57,14 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new LocalActorReference(mailbox),
+                new ServiceCollection().BuildServiceProvider().CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -87,11 +90,14 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new LocalActorReference(mailbox),
+                new ServiceCollection().BuildServiceProvider().CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -118,11 +124,14 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new LocalActorReference(mailbox),
+                new ServiceCollection().BuildServiceProvider().CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -147,11 +156,14 @@ public class ActorProcessTest
         var mailbox = new ChannelMailbox();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new LocalActorReference(mailbox),
+                new ServiceCollection().BuildServiceProvider().CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 

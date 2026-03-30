@@ -1,18 +1,17 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
-using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
+using Trupe.Abstractions.Pipelines;
+using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
+using Trupe.Pipelines;
+using Trupe.Pipelines.Metadatas;
 
 namespace Trupe;
 
@@ -30,15 +29,6 @@ namespace Trupe;
 /// </remarks>
 public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 {
-    /// <summary>
-    /// Cache for typed message handler delegates, keyed by message payload type.
-    /// This avoids reflection overhead on every message by caching the delegate once per type.
-    /// </summary>
-    private static readonly ConcurrentDictionary<
-        Type,
-        Func<IActor, IMessage, CancellationToken, ValueTask>
-    > _typedCallHandle = new();
-
     /// <summary>
     /// Cancellation token source used to signal the actor to stop processing messages.
     /// </summary>
@@ -65,7 +55,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// Subscribers can use this event to detect voluntary actor termination, as opposed to
     /// failure-based termination signaled through the <see cref="Failure"/> event.
     /// </remarks>
-    public event EventHandler<ActorTerminateEventArgs>? Terminate;
+    public event EventHandler<ActorTerminateEventArgs>? Terminated;
 
     /// <summary>
     /// Gets a value indicating whether the actor's message processing loop is currently running.
@@ -88,12 +78,9 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// consuming and processing messages from its mailbox.
     /// </para>
     /// </remarks>
-    public void Start(params IMessage[] messages)
+    public async Task StartAsync(params IMessage[] messages)
     {
-        if (_executing != null)
-        {
-            return;
-        }
+        await StopAsync();
 
         _cts = new CancellationTokenSource();
         _executing = Task.Run(() => RunAsync(new Queue<IMessage>(messages), _cts.Token));
@@ -151,6 +138,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     {
         while (messages.TryDequeue(out var message))
         {
+            if (message.CancellationToken.IsCancellationRequested)
+            {
+                continue;
+            }
+
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
                 message.CancellationToken
@@ -162,8 +154,18 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             }
         }
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         await foreach (var message in mailbox.WithCancellation(cancellationToken))
         {
+            if (message.CancellationToken.IsCancellationRequested)
+            {
+                continue;
+            }
+
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
                 message.CancellationToken
@@ -182,142 +184,99 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// <param name="actor">The actor instance to process the message.</param>
     /// <param name="message">The message to process.</param>
     /// <param name="cancellationToken">Token to cancel the processing.</param>
-    /// <returns>
-    /// <c>true</c> if processing completed successfully and the loop should continue;
-    /// <c>false</c> if an unhandled exception occurred and the loop should stop.
-    /// </returns>
     /// <remarks>
     /// This method handles system messages (<see cref="InitializeActor"/>, <see cref="AfterRestartActor"/>),
     /// typed message dispatch, and response handling for ask-pattern messages.
     /// </remarks>
-    [UnconditionalSuppressMessage(
-        "Aot",
-        "IL3050:RequiresDynamicCode",
-        Justification = "The unfriendly method is not reachable with AOT"
-    )]
     private async ValueTask<bool> ProcessAsync(
         IActor actor,
         IMessage message,
         CancellationToken cancellationToken
     )
     {
-        actor.Context.Response = null;
-
-        var context = actor.Context;
-        var newContext = new ActorContext(context.Self, context.ServiceProvider.CreateAsyncScope());
+        var scope = GetOrCreateServiceScope(message);
+        var serviceProvider = scope.ServiceProvider;
+        var previousActorContext = actor.Context;
+        actor.Context = new ActorContext(actor.Context.Self, actor.Context.Metadata, scope);
 
         try
         {
-            if (message.Payload is InitializeActor)
-            {
-                await actor.InitializeAsync(cancellationToken);
-            }
-            else if (message.Payload is AfterRestartActor)
-            {
-                await actor.AfterRestartAsync(cancellationToken);
-            }
-            else if (message.Payload is Terminate terminate)
-            {
-                Terminate?.Invoke(this, new ActorTerminateEventArgs(actor, terminate.Reason));
-                return false;
-            }
-            else if (RuntimeFeature.IsDynamicCodeSupported)
-            {
-                actor.Context = newContext;
-                var callHandle = _typedCallHandle.GetOrAdd(
-                    message.Payload.GetType(),
-                    CreateCallHandleDelegate
-                );
+            var pipelineFactory = serviceProvider.GetRequiredService<IPipelineFactory>();
+            var pipelineContextFactory =
+                serviceProvider.GetRequiredService<IPipelineContextFactory>();
 
-                await callHandle(actor, message, cancellationToken);
-            }
-            else
-            {
-                actor.Context = newContext;
-                await actor.HandleAsync(message.Payload, cancellationToken);
-            }
+            var pipeline = pipelineFactory.Create(actor.GetType(), message.Payload.GetType());
+            var context = pipelineContextFactory.Create(
+                message,
+                actor.GetType(),
+                [
+                    new ActorProcessMetadata(this),
+                    new ActorMetadata(actor),
+                    new ActorMessageMetadata(message),
+                    new ActorContextMetadata(actor.Context),
+                ],
+                cancellationToken
+            );
 
-            if (message is IAskMessage askMessage)
-            {
-                askMessage.SetResult(actor.Context.Response);
-            }
+            var accessor = serviceProvider.GetRequiredService<SettablePipelineContextAccessor>();
+            accessor.PipelineContext = context;
 
-            actor.Context = context;
-            await newContext.DisposeAsync();
-        }
-        catch (AskException ex)
-        {
-            if (message is IAskMessage askMessage)
-            {
-                askMessage.SetException(ex);
-            }
+            await pipeline.ExecuteAsync(context);
+
+            return true;
         }
         catch (Exception ex)
         {
-            actor.Context = context;
-            Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
+            SetFaulted(message, ex);
             return false;
         }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Invokes the typed message handler for a specific message type.
-    /// </summary>
-    /// <typeparam name="TMessage">The type of the message payload.</typeparam>
-    /// <param name="actor">The actor to handle the message.</param>
-    /// <param name="message">The message containing the payload.</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>A task representing the handler execution.</returns>
-    private static async ValueTask CallHandle<TMessage>(
-        IActor actor,
-        IMessage message,
-        CancellationToken cancellationToken
-    )
-    {
-        if (actor is IHandleActorMessage<TMessage> handle)
+        finally
         {
-            await handle.HandleAsync((TMessage)message.Payload, cancellationToken);
-        }
-        else
-        {
-            await actor.HandleAsync(message.Payload, cancellationToken);
+            await DisposeContextIfNecessary(message, actor.Context);
+            actor.Context = previousActorContext;
         }
     }
 
-    /// <summary>
-    /// Cached <see cref="MethodInfo"/> for the <see cref="CallHandle{TMessage}"/> method,
-    /// used to create typed delegates at runtime.
-    /// </summary>
-    private static readonly MethodInfo s_callHandleMethodInfo = typeof(ActorProcess).GetMethod(
-        nameof(CallHandle),
-        BindingFlags.Static | BindingFlags.NonPublic
-    )!;
-
-    /// <summary>
-    /// Creates a delegate for invoking the typed message handler for a specific message type.
-    /// </summary>
-    /// <param name="messageType">The type of the message payload.</param>
-    /// <returns>A delegate that invokes the typed handler for the specified message type.</returns>
-    /// <remarks>
-    /// This method uses reflection to create a generic delegate, which is then cached
-    /// in <see cref="_typedCallHandle"/> for subsequent calls with the same message type.
-    /// </remarks>
-    [RequiresDynamicCode(
-        "The native code for this instantiation might not be available at runtime."
-    )]
-    [UnconditionalSuppressMessage(
-        "Aot",
-        "IL2060",
-        Justification = "The unfriendly method is not reachable with AOT"
-    )]
-    private static Func<IActor, IMessage, CancellationToken, ValueTask> CreateCallHandleDelegate(
-        Type messageType
-    )
+    private IServiceScope GetOrCreateServiceScope(IMessage message)
     {
-        var typed = s_callHandleMethodInfo.MakeGenericMethod(messageType);
-        return typed.CreateDelegate<Func<IActor, IMessage, CancellationToken, ValueTask>>();
+        if (message.Payload is IUseSameActorScopeServiceMessage)
+        {
+            return (IServiceScope)actor.Context.Metadata[MetadataConst.Scope]!;
+        }
+
+        return actor.Context.ServiceProvider.CreateAsyncScope();
+    }
+
+    private ValueTask DisposeContextIfNecessary(IMessage message, IActorContext context)
+    {
+        if (message.Payload is IUseSameActorScopeServiceMessage)
+        {
+            return new ValueTask();
+        }
+
+        if (context is IAsyncDisposable asyncDisposable)
+        {
+            try
+            {
+                return asyncDisposable.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore exceptions during context disposal to avoid masking original processing exceptions
+            }
+        }
+
+        return new ValueTask();
+    }
+
+    public void Terminate(string? reason)
+    {
+        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
+    }
+
+    public void SetFaulted(IMessage message, Exception exception)
+    {
+        Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, exception));
     }
 
     /// <inheritdoc />
@@ -331,6 +290,6 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         await StopAsync();
 
         Delegate.RemoveAll(Failure, Failure);
-        Delegate.RemoveAll(Terminate, Terminate);
+        Delegate.RemoveAll(Terminated, Terminated);
     }
 }

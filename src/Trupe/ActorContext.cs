@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
@@ -20,10 +21,19 @@ namespace Trupe;
 /// </remarks>
 /// <param name="self">The reference to the actor this context belongs to.</param>
 /// <param name="scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
-public record ActorContext(IActorReference self, IServiceScope scope) : IActorContext
+public record ActorContext(IActorReference Self, IServiceScope Scope)
+    : IActorContext,
+        IAsyncDisposable
 {
-    /// <inheritdoc />
-    public IActorReference Self { get; } = self;
+    public ActorContext(
+        IActorReference self,
+        Dictionary<string, object?> metadata,
+        IServiceScope scope
+    )
+        : this(self, scope)
+    {
+        Metadata = new Dictionary<string, object?>(metadata);
+    }
 
     /// <summary>
     /// Gets or sets the response object to be returned to the sender of the current message.
@@ -35,19 +45,19 @@ public record ActorContext(IActorReference self, IServiceScope scope) : IActorCo
     /// </remarks>
     public object? Response { get; set; }
 
-    /// <inheritdoc />
-    public IServiceProvider ServiceProvider => scope.ServiceProvider;
+    public Dictionary<string, object?> Metadata { get; } = [];
 
-    /// <inheritdoc />
+    public IServiceProvider ServiceProvider { get; } = Scope.ServiceProvider;
+
     public ValueTask DisposeAsync()
     {
-        if (scope is IAsyncDisposable asyncDisposable)
+        if (Scope is IAsyncDisposable asyncDisposable)
         {
             return asyncDisposable.DisposeAsync();
         }
         else
         {
-            scope.Dispose();
+            Scope.Dispose();
             return new ValueTask();
         }
     }
