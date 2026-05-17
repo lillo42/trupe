@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
 using Trupe.Supervisors;
 

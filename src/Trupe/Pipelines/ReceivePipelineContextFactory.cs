@@ -9,7 +9,7 @@ using Trupe.Abstractions.Pipelines;
 namespace Trupe.Pipelines;
 
 public class ReceivePipelineContextFactory(IServiceProvider serviceProvider, IPipelineLookup lookup)
-    : AbstractPipelineContextFactory(serviceProvider, lookup),
+    : AbstractPipelineContextFactory(lookup),
         IReceivePipelineContextFactory
 {
     public IReceivePipelineContext Create(
