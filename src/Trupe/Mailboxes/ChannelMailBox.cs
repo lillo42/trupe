@@ -98,10 +98,11 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
     }
 
     /// <inheritdoc />
-    public async ValueTask CleanAsync()
+    public ValueTask CleanAsync()
     {
         _channel?.Writer.Complete();
         _channel = CreateChannel();
+        return new ValueTask();
     }
 
     /// <inheritdoc />

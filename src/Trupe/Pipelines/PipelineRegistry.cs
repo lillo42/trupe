@@ -44,6 +44,7 @@ public class PipelineRegistry(IOptions<PipelineOptions> options) : IPipelineLook
                             Scope = scope,
                         };
                     })
+                    .ToList()
         );
     }
 }

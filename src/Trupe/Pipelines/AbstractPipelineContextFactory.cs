@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -11,10 +10,7 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
-public abstract class AbstractPipelineContextFactory(
-    IServiceProvider serviceProvider,
-    IPipelineLookup lookup
-)
+public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
 {
     protected List<object?> GetMetadata(Type actorType, Type messageType, MiddlewareScope scope)
     {
