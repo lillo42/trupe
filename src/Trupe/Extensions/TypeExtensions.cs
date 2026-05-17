@@ -1,5 +1,6 @@
 using System;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Extensions;
 
@@ -36,5 +37,15 @@ internal static class TypeExtensions
     public static bool IsRootSupervisor(this Type type)
     {
         return typeof(IRootSupervisor).IsAssignableFrom(type);
+    }
+
+    public static bool IReceiveMiddleware(this Type type)
+    {
+        return typeof(IReceiveMiddleware).IsAssignableFrom(type);
+    }
+
+    public static bool IsSendMiddleware(this Type type)
+    {
+        return typeof(ISendMiddleware).IsAssignableFrom(type);
     }
 }

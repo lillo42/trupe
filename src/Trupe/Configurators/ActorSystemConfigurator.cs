@@ -46,6 +46,7 @@ public class ActorSystemConfigurator
 
         _serviceCollection.TryAddSingleton<AskMiddleware>();
         _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
+        _serviceCollection.TryAddSingleton<MailboxDispatcherMiddleware>();
         _serviceCollection.Configure<PipelineOptions>(static opt =>
         {
             opt.Middlewares.Add(
@@ -61,6 +62,14 @@ public class ActorSystemConfigurator
                 {
                     Order = int.MaxValue,
                     MiddlewareType = typeof(ActorMessageDispatcherMiddleware),
+                }
+            );
+
+            opt.Middlewares.Add(
+                new PipelineMiddlewareConfiguration
+                {
+                    Order = int.MaxValue,
+                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
                 }
             );
         });
