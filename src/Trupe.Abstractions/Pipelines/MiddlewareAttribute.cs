@@ -1,4 +1,5 @@
 using System;
+using Trupe.Abstractions.Extensions;
 
 namespace Trupe.Abstractions.Pipelines;
 
@@ -28,25 +29,25 @@ public abstract class MiddlewareAttribute : Attribute, IMiddlewareConfiguration
                 return _scope.Value;
             }
 
-            var isSend = MiddlewareType.IsAssignableFrom(typeof(ISendMiddleware));
-            var isReceive = MiddlewareType.IsAssignableFrom(typeof(IReceiveMiddleware));
-
-            if (isSend && isReceive)
+            var scope = MiddlewareScope.None;
+            if (MiddlewareType.IsSendMiddleware())
             {
-                return MiddlewareScope.Both;
-            }
-            else if (isSend)
-            {
-                return MiddlewareScope.Send;
-            }
-            else if (isReceive)
-            {
-                return MiddlewareScope.Receive;
+                scope |= MiddlewareScope.Send;
             }
 
-            throw new InvalidOperationException(
-                $"Unable to determine middleware scope for {MiddlewareType.FullName}. Please specify the scope explicitly."
-            );
+            if (MiddlewareType.IReceiveMiddleware())
+            {
+                scope |= MiddlewareScope.Receive;
+            }
+
+            if (scope == MiddlewareScope.None)
+            {
+                throw new InvalidOperationException(
+                    $"Unable to determine middleware scope for {MiddlewareType.FullName}. Please specify the scope explicitly."
+                );
+            }
+
+            return scope;
         }
         set { _scope = value; }
     }

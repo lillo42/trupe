@@ -3,9 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
-using Trupe.Extensions;
 using Trupe.Factories;
 using Trupe.Pipelines;
 using Trupe.Pipelines.Middlewares;
@@ -38,9 +38,27 @@ public class ActorSystemConfigurator
         _serviceCollection.TryAddSingleton<IRootSupervisor, RootSupervisor>();
         _serviceCollection.TryAddSingleton(_ => ActorRegister.Instance);
 
+        _serviceCollection.TryAddSingleton<IPipelineLookup, PipelineRegistry>();
+
         _serviceCollection.TryAddTransient<IReceivePipelineFactory, ReceivePipelineFactory>();
+        _serviceCollection.TryAddSingleton<
+            IReceivePipelineContextFactory,
+            ReceivePipelineContextFactory
+        >();
+        _serviceCollection.TryAddSingleton<SettableReceivePipelineContextAccessor>();
+        _serviceCollection.TryAddSingleton<IReceivePipelineContextAccessor>(provider =>
+            provider.GetRequiredService<SettableReceivePipelineContextAccessor>()
+        );
 
         _serviceCollection.TryAddTransient<ISendPipelineFactory, SendPipelineFactory>();
+        _serviceCollection.TryAddSingleton<
+            ISendPipelineContextFactory,
+            SendPipelineContextFactory
+        >();
+        _serviceCollection.TryAddSingleton<SettableSendPipelineContextAccessor>();
+        _serviceCollection.TryAddSingleton<ISendPipelineContextAccessor>(provider =>
+            provider.GetRequiredService<SettableSendPipelineContextAccessor>()
+        );
 
         _serviceCollection.TryAddSingleton<IActorFactory, ActorFactory>();
 
@@ -137,7 +155,7 @@ public class ActorSystemConfigurator
             Type supervisorType
     )
     {
-        if (supervisorType.IsSupervisor())
+        if (!supervisorType.IsSupervisor())
         {
             throw new InvalidOperationException(
                 $"Type {supervisorType.FullName} does not implement ISupervisor."
@@ -183,7 +201,7 @@ public class ActorSystemConfigurator
             Type rootSupervisorType
     )
     {
-        if (rootSupervisorType.IsRootSupervisor())
+        if (!rootSupervisorType.IsRootSupervisor())
         {
             throw new InvalidOperationException(
                 $"Type {rootSupervisorType.FullName} does not implement ISupervisor."

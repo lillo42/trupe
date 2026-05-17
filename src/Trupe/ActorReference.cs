@@ -141,9 +141,16 @@ public class ActorReference(Type actorType, IServiceProvider provider, IMailbox 
             cancellationToken
         );
 
-        var accessor = sp.GetRequiredService<SettablePipelineContextAccessor>();
+        var accessor = sp.GetRequiredService<SettableSendPipelineContextAccessor>();
         accessor.SendContext = context;
 
-        await pipeline.ExecuteAsync(context);
+        try
+        {
+            await pipeline.ExecuteAsync(context);
+        }
+        finally
+        {
+            accessor.SendContext = null;
+        }
     }
 }

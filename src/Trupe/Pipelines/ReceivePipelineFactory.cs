@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,16 +10,11 @@ public class ReceivePipelineFactory(IServiceProvider provider, IPipelineLookup l
     : AbstractPipelineFactory(provider, lookup),
         IReceivePipelineFactory
 {
-    private static readonly ConcurrentDictionary<(Type, Type), ImmutableList<Type>> _cache = [];
-
     protected override MiddlewareScope Scope => MiddlewareScope.Receive;
 
     public IReceivePipeline Create(Type actorType, Type messageType)
     {
-        var types = _cache.GetOrAdd(
-            (actorType, messageType),
-            val => GetMiddlewareTypes(val.Item1, val.Item2)
-        );
+        var types = GetMiddlewareTypes(actorType, messageType);
 
         return new ReceivePipeline(
             types

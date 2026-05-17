@@ -3,12 +3,12 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
-public class SettablePipelineContextAccessor : ISendPipelineContextAccessor
+public class SettableSendPipelineContextAccessor : ISendPipelineContextAccessor
 {
-    private readonly AsyncLocal<ISendPipelineContext> _sendPipelineContext = new();
+    private readonly AsyncLocal<ISendPipelineContext?> _sendPipelineContext = new();
     public ISendPipelineContext? SendContext
     {
         get { return _sendPipelineContext.Value; }
-        set { _sendPipelineContext.Value = value!; }
+        set { _sendPipelineContext.Value = value; }
     }
 }

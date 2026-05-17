@@ -219,6 +219,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         CancellationToken cancellationToken
     )
     {
+        SettableReceivePipelineContextAccessor? accessor = null;
         var scope = GetOrCreateServiceScope(message);
         var serviceProvider = scope.ServiceProvider;
         var previousActorContext = actor.Context;
@@ -244,8 +245,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
                 cancellationToken
             );
 
-            var accessor =
-                serviceProvider.GetRequiredService<SettableReceivePipelineContextAccessor>();
+            accessor = serviceProvider.GetRequiredService<SettableReceivePipelineContextAccessor>();
             accessor.ReceiveContext = context;
 
             await pipeline.ExecuteAsync(context);
@@ -262,6 +262,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             await DisposeContextIfNecessary(message, scope);
             await DisposeContextIfNecessary(message, actor.Context);
             actor.Context = previousActorContext;
+
+            if (accessor != null)
+            {
+                accessor.ReceiveContext = null;
+            }
         }
     }
 

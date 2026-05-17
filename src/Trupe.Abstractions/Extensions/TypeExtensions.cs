@@ -1,13 +1,12 @@
 using System;
-using Trupe.Abstractions;
 using Trupe.Abstractions.Pipelines;
 
-namespace Trupe.Extensions;
+namespace Trupe.Abstractions.Extensions;
 
 /// <summary>
 /// Internal extension methods for <see cref="Type"/> to check actor and supervisor assignability.
 /// </summary>
-internal static class TypeExtensions
+public static class TypeExtensions
 {
     /// <summary>
     /// Determines whether the specified type implements <see cref="IActor"/>.
