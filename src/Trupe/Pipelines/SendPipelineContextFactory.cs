@@ -8,10 +8,24 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
+/// <summary>
+/// Factory that creates <see cref="SendPipelineContext"/> instances by collecting metadata from middleware registrations and attributes.
+/// </summary>
+/// <param name="serviceProvider">The service provider to include in the created context.</param>
+/// <param name="lookup">The pipeline lookup used to resolve registered middlewares.</param>
 public class SendPipelineContextFactory(IServiceProvider serviceProvider, IPipelineLookup lookup)
     : AbstractPipelineContextFactory(lookup),
         ISendPipelineContextFactory
 {
+    /// <summary>
+    /// Creates a new send pipeline context for the specified target reference, actor type, message, and metadata.
+    /// </summary>
+    /// <param name="reference">The actor reference the message is being sent to.</param>
+    /// <param name="actorType">The type of the target actor.</param>
+    /// <param name="message">The outbound message to send.</param>
+    /// <param name="metadata">Additional metadata objects to include in the pipeline context.</param>
+    /// <param name="cancellationToken">The cancellation token for this pipeline execution.</param>
+    /// <returns>A new <see cref="ISendPipelineContext"/> instance.</returns>
     public ISendPipelineContext Create(
         IActorReference reference,
         Type actorType,

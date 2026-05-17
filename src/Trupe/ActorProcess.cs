@@ -109,6 +109,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         await StopAsync("Stop requested");
     }
 
+    /// <summary>
+    /// Gracefully stops the actor process with the specified reason and waits for completion.
+    /// </summary>
+    /// <param name="reason">A description of why the actor is being stopped.</param>
+    /// <returns>A task that completes when the actor has stopped processing messages.</returns>
     public async Task StopAsync(string? reason)
     {
         if (
@@ -140,6 +145,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
     }
 
+    /// <summary>
+    /// Requests the actor to stop by signaling cancellation without waiting for the message loop to complete.
+    /// </summary>
+    /// <param name="reason">A description of why the stop was requested.</param>
+    /// <returns>A task that completes once the cancellation has been signaled.</returns>
     public async Task RequestStopAsync(string reason)
     {
         if (

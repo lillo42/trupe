@@ -25,6 +25,12 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     : IActorContext,
         IAsyncDisposable
 {
+    /// <summary>
+    /// Initializes a new <see cref="ActorContext"/> with pre-existing metadata entries.
+    /// </summary>
+    /// <param name="self">The reference to the actor this context belongs to.</param>
+    /// <param name="metadata">Initial metadata key-value pairs to copy into this context.</param>
+    /// <param name="scope">The DI scope associated with this context.</param>
     public ActorContext(
         IActorReference self,
         Dictionary<string, object?> metadata,
@@ -45,10 +51,19 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     /// </remarks>
     public object? Response { get; set; }
 
+    /// <summary>
+    /// Gets the actor-scoped metadata dictionary.
+    /// </summary>
     public Dictionary<string, object?> Metadata { get; } = [];
 
+    /// <summary>
+    /// Gets the scoped service provider derived from the associated <see cref="Scope"/>.
+    /// </summary>
     public IServiceProvider ServiceProvider { get; } = Scope.ServiceProvider;
 
+    /// <summary>
+    /// Asynchronously disposes the associated DI scope.
+    /// </summary>
     public ValueTask DisposeAsync()
     {
         if (Scope is IAsyncDisposable asyncDisposable)

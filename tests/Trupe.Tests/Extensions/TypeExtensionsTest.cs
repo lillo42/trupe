@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Extensions;
-using Trupe.Extensions;
 
 namespace Trupe.Tests.Extensions;
 

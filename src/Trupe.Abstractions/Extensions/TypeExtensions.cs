@@ -38,11 +38,21 @@ public static class TypeExtensions
         return typeof(IRootSupervisor).IsAssignableFrom(type);
     }
 
+    /// <summary>
+    /// Determines whether the specified type implements <see cref="IReceiveMiddleware"/>.
+    /// </summary>
+    /// <param name="type">The type to check.</param>
+    /// <returns><c>true</c> if the type implements <see cref="IReceiveMiddleware"/>; otherwise, <c>false</c>.</returns>
     public static bool IsReceiveMiddleware(this Type type)
     {
         return typeof(IReceiveMiddleware).IsAssignableFrom(type);
     }
 
+    /// <summary>
+    /// Determines whether the specified type implements <see cref="ISendMiddleware"/>.
+    /// </summary>
+    /// <param name="type">The type to check.</param>
+    /// <returns><c>true</c> if the type implements <see cref="ISendMiddleware"/>; otherwise, <c>false</c>.</returns>
     public static bool IsSendMiddleware(this Type type)
     {
         return typeof(ISendMiddleware).IsAssignableFrom(type);

@@ -10,8 +10,19 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
+/// <summary>
+/// Base class for pipeline context factories that collects middleware metadata for a given actor and message type.
+/// </summary>
+/// <param name="lookup">The pipeline lookup used to resolve registered middlewares.</param>
 public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
 {
+    /// <summary>
+    /// Collects and returns ordered metadata from middleware attributes and registrations for the specified actor, message type, and scope.
+    /// </summary>
+    /// <param name="actorType">The type of the actor processing the message.</param>
+    /// <param name="messageType">The type of the message being processed.</param>
+    /// <param name="scope">The middleware scope to filter by (send or receive).</param>
+    /// <returns>A list of metadata objects from matching middlewares, ordered by priority.</returns>
     protected List<object?> GetMetadata(Type actorType, Type messageType, MiddlewareScope scope)
     {
         var middlewareAttributes = actorType

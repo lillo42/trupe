@@ -14,6 +14,12 @@ using Trupe.Pipelines;
 
 namespace Trupe;
 
+/// <summary>
+/// Default implementation of <see cref="IActorReference"/> that sends messages to an actor through a send pipeline and mailbox.
+/// </summary>
+/// <param name="actorType">The type of the actor this reference points to.</param>
+/// <param name="provider">The service provider used to create scoped pipeline instances.</param>
+/// <param name="mailbox">The mailbox used to deliver messages to the actor.</param>
 public class ActorReference(Type actorType, IServiceProvider provider, IMailbox mailbox)
     : IActorReference
 {
@@ -116,6 +122,10 @@ public class ActorReference(Type actorType, IServiceProvider provider, IMailbox 
         await ExecuteAsync(actorMessage, cancellationToken);
     }
 
+    /// <summary>
+    /// Raises the <see cref="Terminated"/> event to notify subscribers that this actor reference is being terminated.
+    /// </summary>
+    /// <param name="reason">An optional reason describing why the actor is being terminated.</param>
     public void Terminate(string? reason)
     {
         Terminated?.Invoke(this, new TerminatedEventArgs(this, reason));

@@ -223,6 +223,11 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Registers a middleware singleton instance.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="middleware">The middleware instance to register.</param>
     public ActorSystemConfigurator AddMiddleware<TMiddleware>(TMiddleware middleware)
         where TMiddleware : class, IMiddleware
     {
@@ -230,6 +235,12 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Registers a middleware using a factory delegate with the specified lifetime.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="middlewareFactory">The factory delegate to create middleware instances.</param>
+    /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware<TMiddleware>(
         Func<IServiceProvider, TMiddleware> middlewareFactory,
         ServiceLifetime lifetime = ServiceLifetime.Transient
@@ -243,12 +254,21 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Registers a middleware singleton instance by its runtime type.
+    /// </summary>
+    /// <param name="middleware">The middleware instance to register.</param>
     public ActorSystemConfigurator AddMiddleware(IMiddleware middleware)
     {
         _serviceCollection.TryAdd(new ServiceDescriptor(middleware.GetType(), middleware));
         return this;
     }
 
+    /// <summary>
+    /// Registers a middleware by type with the specified lifetime.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to register.</param>
+    /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
         Type middlewareType,
         ServiceLifetime lifetime = ServiceLifetime.Transient
@@ -258,6 +278,12 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Registers a middleware by type using a factory delegate with the specified lifetime.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to register.</param>
+    /// <param name="middlewareFactory">The factory delegate to create middleware instances.</param>
+    /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
         Type middlewareType,
         Func<IServiceProvider, object> middlewareFactory,
@@ -270,45 +296,85 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> to the pipeline with default order and no metadata.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     public ActorSystemConfigurator Use<TMiddleware>()
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(0, null);
     }
 
+    /// <summary>
+    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> with the specified execution order.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="order">The execution order; lower values execute first.</param>
     public ActorSystemConfigurator Use<TMiddleware>(int order)
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(order, null);
     }
 
+    /// <summary>
+    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> with the specified metadata.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use<TMiddleware>(object? metadata)
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(0, metadata);
     }
 
+    /// <summary>
+    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> with the specified order and metadata.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="order">The execution order; lower values execute first.</param>
+    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use<TMiddleware>(int order, object? metadata)
         where TMiddleware : class, IMiddleware
     {
         return Use(typeof(TMiddleware), order, metadata);
     }
 
+    /// <summary>
+    /// Adds a global middleware by type with default order and no metadata.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to add.</param>
     public ActorSystemConfigurator Use(Type middlewareType)
     {
         return Use(middlewareType, 0, null);
     }
 
+    /// <summary>
+    /// Adds a global middleware by type with the specified execution order.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to add.</param>
+    /// <param name="order">The execution order; lower values execute first.</param>
     public ActorSystemConfigurator Use(Type middlewareType, int order)
     {
         return Use(middlewareType, order, null);
     }
 
+    /// <summary>
+    /// Adds a global middleware by type with the specified metadata.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to add.</param>
+    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use(Type middlewareType, object? metadata)
     {
         return Use(middlewareType, 0, metadata);
     }
 
+    /// <summary>
+    /// Adds a global middleware by type with the specified order and metadata, and registers it in the DI container.
+    /// </summary>
+    /// <param name="middlewareType">The middleware type to add.</param>
+    /// <param name="order">The execution order; lower values execute first.</param>
+    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use(Type middlewareType, int order, object? metadata)
     {
         _serviceCollection.TryAddTransient(middlewareType);

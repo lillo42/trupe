@@ -12,6 +12,9 @@ using Trupe.Pipelines.Metadatas;
 
 namespace Trupe.Pipelines.Middlewares;
 
+/// <summary>
+/// Receive middleware that dispatches incoming messages to the appropriate actor handler method, including system messages and typed message routing.
+/// </summary>
 public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
 {
     private readonly ConcurrentDictionary<
@@ -19,6 +22,11 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         Func<IActor, object, CancellationToken, ValueTask>
     > _typedCallHandle = new();
 
+    /// <summary>
+    /// Dispatches the message to the actor's handler, choosing the appropriate method based on message type and runtime capabilities.
+    /// </summary>
+    /// <param name="context">The receive pipeline context containing the actor, message, and metadata.</param>
+    /// <param name="next">The delegate to invoke the next middleware in the pipeline.</param>
     public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
     {
         var cancellationToken = context.CancellationToken;

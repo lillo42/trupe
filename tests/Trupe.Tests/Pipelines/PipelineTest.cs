@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
@@ -17,7 +16,6 @@ using Trupe.Abstractions.SystemMessages;
 using Trupe.Extensions;
 using Trupe.Messages;
 using Trupe.Pipelines;
-using Trupe.Pipelines.Metadatas;
 using Trupe.Pipelines.Middlewares;
 
 namespace Trupe.Tests.Pipelines;
@@ -144,19 +142,21 @@ public class PipelineTest
     public async Task PipelineRegistry_ShouldReturnMiddlewaresMatchingActorAndMessageType()
     {
         // Arrange
-        var options = Options.Create(new PipelineOptions
-        {
-            Middlewares =
-            [
-                new PipelineMiddlewareConfiguration
-                {
-                    Order = 1,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
-                    ActorType = null,
-                    MessageType = null,
-                },
-            ],
-        });
+        var options = Options.Create(
+            new PipelineOptions
+            {
+                Middlewares =
+                [
+                    new PipelineMiddlewareConfiguration
+                    {
+                        Order = 1,
+                        MiddlewareType = typeof(MailboxDispatcherMiddleware),
+                        ActorType = null,
+                        MessageType = null,
+                    },
+                ],
+            }
+        );
 
         var registry = new PipelineRegistry(options);
 
@@ -173,19 +173,21 @@ public class PipelineTest
     public async Task PipelineRegistry_ShouldFilterByActorType()
     {
         // Arrange
-        var options = Options.Create(new PipelineOptions
-        {
-            Middlewares =
-            [
-                new PipelineMiddlewareConfiguration
-                {
-                    Order = 1,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
-                    ActorType = typeof(TestActor),
-                    MessageType = null,
-                },
-            ],
-        });
+        var options = Options.Create(
+            new PipelineOptions
+            {
+                Middlewares =
+                [
+                    new PipelineMiddlewareConfiguration
+                    {
+                        Order = 1,
+                        MiddlewareType = typeof(MailboxDispatcherMiddleware),
+                        ActorType = typeof(TestActor),
+                        MessageType = null,
+                    },
+                ],
+            }
+        );
 
         var registry = new PipelineRegistry(options);
 
@@ -201,19 +203,21 @@ public class PipelineTest
     public async Task PipelineRegistry_ShouldFilterByMessageType()
     {
         // Arrange
-        var options = Options.Create(new PipelineOptions
-        {
-            Middlewares =
-            [
-                new PipelineMiddlewareConfiguration
-                {
-                    Order = 1,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
-                    ActorType = null,
-                    MessageType = typeof(int),
-                },
-            ],
-        });
+        var options = Options.Create(
+            new PipelineOptions
+            {
+                Middlewares =
+                [
+                    new PipelineMiddlewareConfiguration
+                    {
+                        Order = 1,
+                        MiddlewareType = typeof(MailboxDispatcherMiddleware),
+                        ActorType = null,
+                        MessageType = typeof(int),
+                    },
+                ],
+            }
+        );
 
         var registry = new PipelineRegistry(options);
 
@@ -232,22 +236,24 @@ public class PipelineTest
     public async Task PipelineRegistry_ShouldSetCorrectScope()
     {
         // Arrange
-        var options = Options.Create(new PipelineOptions
-        {
-            Middlewares =
-            [
-                new PipelineMiddlewareConfiguration
-                {
-                    Order = 1,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware), // ISendMiddleware only
-                },
-                new PipelineMiddlewareConfiguration
-                {
-                    Order = 2,
-                    MiddlewareType = typeof(AskMiddleware), // IReceiveMiddleware only
-                },
-            ],
-        });
+        var options = Options.Create(
+            new PipelineOptions
+            {
+                Middlewares =
+                [
+                    new PipelineMiddlewareConfiguration
+                    {
+                        Order = 1,
+                        MiddlewareType = typeof(MailboxDispatcherMiddleware), // ISendMiddleware only
+                    },
+                    new PipelineMiddlewareConfiguration
+                    {
+                        Order = 2,
+                        MiddlewareType = typeof(AskMiddleware), // IReceiveMiddleware only
+                    },
+                ],
+            }
+        );
 
         var registry = new PipelineRegistry(options);
         var middlewares = registry.GetMiddlewares(typeof(Actor), typeof(string));
@@ -273,9 +279,7 @@ public class PipelineTest
             .Returns(ValueTask.CompletedTask);
 
         var message = new TellMessage("hello", []);
-        var metadata = new PipelineMetadataCollection(
-            [new MailboxMetadata(mailbox)]
-        );
+        var metadata = new PipelineMetadataCollection([new MailboxMetadata(mailbox)]);
 
         var context = Substitute.For<ISendPipelineContext>();
         context.Message.Returns(message);
@@ -358,7 +362,8 @@ public class PipelineTest
     {
         // Arrange
         var actor = Substitute.For<IActor>();
-        actor.HandleAsync(Arg.Any<object?>(), Arg.Any<CancellationToken>())
+        actor
+            .HandleAsync(Arg.Any<object?>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.CompletedTask);
 
         var payload = "test-message";
@@ -528,7 +533,10 @@ public class PipelineTest
 
     private class OrderTrackingReceiveMiddleware(List<int> order, int id) : IReceiveMiddleware
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(
+            IReceivePipelineContext context,
+            NextReceiveDelegate next
+        )
         {
             order.Add(id);
             await next(context);

@@ -4,8 +4,16 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
+/// <summary>
+/// Executes a chain of receive middlewares in order for inbound message processing.
+/// </summary>
+/// <param name="middlewares">The ordered list of receive middlewares to execute.</param>
 public class ReceivePipeline(ImmutableList<IReceiveMiddleware> middlewares) : IReceivePipeline
 {
+    /// <summary>
+    /// Executes the receive pipeline by invoking all middlewares sequentially.
+    /// </summary>
+    /// <param name="context">The receive pipeline context for the current message.</param>
     public ValueTask ExecuteAsync(IReceivePipelineContext context)
     {
         return InvokeAsync(context, 0);

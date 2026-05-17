@@ -9,6 +9,10 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
+/// <summary>
+/// Registry that resolves and caches middleware configurations for a given actor and message type pair.
+/// </summary>
+/// <param name="options">The pipeline options containing global middleware registrations.</param>
 public class PipelineRegistry(IOptions<PipelineOptions> options) : IPipelineLookup
 {
     private readonly ConcurrentDictionary<
@@ -16,6 +20,12 @@ public class PipelineRegistry(IOptions<PipelineOptions> options) : IPipelineLook
         IEnumerable<IMiddlewareConfiguration>
     > _cache = new();
 
+    /// <summary>
+    /// Returns the middleware configurations applicable to the specified actor and message type, using a cached lookup.
+    /// </summary>
+    /// <param name="actorType">The type of the actor.</param>
+    /// <param name="messageType">The type of the message.</param>
+    /// <returns>An enumerable of matching middleware configurations.</returns>
     public IEnumerable<IMiddlewareConfiguration> GetMiddlewares(Type actorType, Type messageType)
     {
         return _cache.GetOrAdd(
