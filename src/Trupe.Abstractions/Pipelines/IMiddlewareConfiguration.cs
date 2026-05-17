@@ -9,4 +9,6 @@ public interface IMiddlewareConfiguration
     object? Metadata { get; }
 
     Type MiddlewareType { get; }
+
+    MiddlewareScope Scope { get; }
 }

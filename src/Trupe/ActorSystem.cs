@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 
@@ -36,12 +35,12 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         var mailbox = new ChannelMailbox();
 
         _rootSupervisor.Context = new ActorContext(
-            new LocalActorReference(mailbox),
+            new ActorReference(_rootSupervisor.GetType(), serviceProvider, mailbox),
             serviceProvider.CreateAsyncScope()
         );
 
         _process = new ActorProcess(_rootSupervisor, mailbox);
-        await _process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
+        await _process.StartAsync(new TellMessage(new InitializeActor(), []));
     }
 
     /// <summary>

@@ -8,4 +8,5 @@ public record MiddlewareConfiguration(int Order, object? Metadata, Type Middlewa
 {
     public Type? ActorType { get; set; }
     public Type? MessageType { get; set; }
+    public MiddlewareScope Scope { get; set; }
 }

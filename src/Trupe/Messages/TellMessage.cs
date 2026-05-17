@@ -18,7 +18,7 @@ namespace Trupe.Messages;
 /// A token that can be used to cancel the delivery or processing of the message
 /// while it is waiting in the mailbox queue.
 /// </param>
-public record LocalTellMessage(
+public record TellMessage(
     object Payload,
     Dictionary<string, object> Metadata,
     CancellationToken CancellationToken = default

@@ -10,12 +10,10 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
@@ -382,12 +380,16 @@ public abstract partial class PartitionSupervisor<
             );
         }
 
-        var reference = new LocalActorReference(specification.Mailbox);
+        var reference = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
         var actor = ActorFactory.CreateActor(typeof(TActor));
         actor.Context = new ActorContext(reference, Context.ServiceProvider.CreateAsyncScope());
 
         var process = new ActorProcess(actor, specification.Mailbox);
-        process.Failure += HandleFailure;
+        process.Failed += HandleFailure;
         process.Terminated += HandleTermination;
 
         var child = new Child(
@@ -400,7 +402,7 @@ public abstract partial class PartitionSupervisor<
         );
         Children = Children.Add(child);
 
-        await process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
+        await process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         return child;
     }
@@ -504,7 +506,7 @@ public abstract partial class PartitionSupervisor<
     {
         PartitionLog.StoppingActor(Logger);
 
-        metadata.Process.Failure -= HandleFailure;
+        metadata.Process.Failed -= HandleFailure;
         metadata.Process.Terminated -= HandleTermination;
         await metadata.Process.StopAsync();
 
@@ -599,12 +601,12 @@ public abstract partial class PartitionSupervisor<
         await child.Process.DisposeAsync();
         PartitionLog.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
-        child.Process.Failure += HandleFailure;
+        child.Process.Failed += HandleFailure;
         child.Process.Terminated += HandleTermination;
 
         await child.Process.StartAsync(
-            new LocalTellMessage(new InitializeActor(), []),
-            new LocalTellMessage(new AfterRestartActor(), [])
+            new TellMessage(new InitializeActor(), []),
+            new TellMessage(new AfterRestartActor(), [])
         );
 
         PartitionLog.ActorProcessStarted(Logger);

@@ -7,24 +7,23 @@ using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Pipelines;
-using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
 using Trupe.Pipelines.Metadatas;
 
 namespace Trupe.Pipelines.Middlewares;
 
-public class ActorMessageDispatcherMiddleware : IMiddleware
+public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
 {
     private readonly ConcurrentDictionary<
         Type,
         Func<IActor, object, CancellationToken, ValueTask>
     > _typedCallHandle = new();
 
-    public async ValueTask InvokeAsync(IPipelineContext context, NextDelegate next)
+    public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
     {
         var cancellationToken = context.CancellationToken;
-        var message = context.Metadata.GetRequiredMetadata<ActorMessageMetadata>().Message;
-        var actor = context.Metadata.GetRequiredMetadata<ActorMetadata>().Actor;
+        var message = context.Message;
+        var actor = context.Actor;
 
         if (message.Payload is InitializeActor)
         {
@@ -37,7 +36,7 @@ public class ActorMessageDispatcherMiddleware : IMiddleware
         else if (message.Payload is Terminate terminate)
         {
             var process = context.Metadata.GetRequiredMetadata<ActorProcessMetadata>().Process;
-            process.Terminate(terminate.Reason);
+            await process.RequestStopAsync(terminate.Reason);
         }
         else if (RuntimeFeature.IsDynamicCodeSupported)
         {
@@ -60,7 +59,7 @@ public class ActorMessageDispatcherMiddleware : IMiddleware
         typeof(ActorMessageDispatcherMiddleware).GetMethod(
             nameof(CallHandle),
             BindingFlags.Static | BindingFlags.NonPublic
-        )!;
+        );
 
     private static async ValueTask CallHandle<TMessage>(
         IActor actor,

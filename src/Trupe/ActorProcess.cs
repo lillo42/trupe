@@ -10,7 +10,6 @@ using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.Pipelines;
 using Trupe.Pipelines.Metadatas;
 
 namespace Trupe;
@@ -46,14 +45,14 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// Subscribers can use this event to implement supervision strategies such as
     /// restarting the actor, escalating the failure, or logging the error.
     /// </remarks>
-    public event EventHandler<ActorFailureEventArgs>? Failure;
+    public event EventHandler<ActorFailureEventArgs>? Failed;
 
     /// <summary>
     /// Event raised when the actor receives a <see cref="Abstractions.SystemMessages.Terminate"/> message and stops processing.
     /// </summary>
     /// <remarks>
     /// Subscribers can use this event to detect voluntary actor termination, as opposed to
-    /// failure-based termination signaled through the <see cref="Failure"/> event.
+    /// failure-based termination signaled through the <see cref="Failed"/> event.
     /// </remarks>
     public event EventHandler<ActorTerminateEventArgs>? Terminated;
 
@@ -107,12 +106,23 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// </remarks>
     public async Task StopAsync()
     {
-        if (_cts == null || _executing == null)
+        await StopAsync("Stop requested");
+    }
+
+    public async Task StopAsync(string? reason)
+    {
+        if (
+            _cts == null
+            || _executing == null
+            || _cts.IsCancellationRequested
+            || _executing.IsCompleted
+        )
         {
             return;
         }
 
         await _cts.CancelAsync();
+
         try
         {
             await _executing;
@@ -126,6 +136,25 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
         _cts = null;
         _executing = null;
+
+        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
+    }
+
+    public async Task RequestStopAsync(string reason)
+    {
+        if (
+            _cts == null
+            || _executing == null
+            || _cts.IsCancellationRequested
+            || _executing.IsCompleted
+        )
+        {
+            return;
+        }
+
+        await _cts.CancelAsync();
+
+        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
     }
 
     /// <summary>
@@ -154,14 +183,10 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             }
         }
 
-        if (cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            return;
-        }
-
-        await foreach (var message in mailbox.WithCancellation(cancellationToken))
-        {
-            if (message.CancellationToken.IsCancellationRequested)
+            var message = await mailbox.DequeueAsync(cancellationToken);
+            if (message == null || message.CancellationToken.IsCancellationRequested)
             {
                 continue;
             }
@@ -173,7 +198,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
             if (!await ProcessAsync(actor, message, cts.Token))
             {
-                return;
+                break;
             }
         }
     }
@@ -201,14 +226,15 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
         try
         {
-            var pipelineFactory = serviceProvider.GetRequiredService<IPipelineFactory>();
+            var pipelineFactory = serviceProvider.GetRequiredService<IReceivePipelineFactory>();
             var pipelineContextFactory =
-                serviceProvider.GetRequiredService<IPipelineContextFactory>();
+                serviceProvider.GetRequiredService<IReceivePipelineContextFactory>();
 
             var pipeline = pipelineFactory.Create(actor.GetType(), message.Payload.GetType());
             var context = pipelineContextFactory.Create(
+                actor,
+                actor.Context,
                 message,
-                actor.GetType(),
                 [
                     new ActorProcessMetadata(this),
                     new ActorMetadata(actor),
@@ -218,8 +244,9 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
                 cancellationToken
             );
 
-            var accessor = serviceProvider.GetRequiredService<SettablePipelineContextAccessor>();
-            accessor.PipelineContext = context;
+            var accessor =
+                serviceProvider.GetRequiredService<SettableReceivePipelineContextAccessor>();
+            accessor.ReceiveContext = context;
 
             await pipeline.ExecuteAsync(context);
 
@@ -227,11 +254,12 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            SetFaulted(message, ex);
+            Failed?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
             return false;
         }
         finally
         {
+            await DisposeContextIfNecessary(message, scope);
             await DisposeContextIfNecessary(message, actor.Context);
             actor.Context = previousActorContext;
         }
@@ -241,42 +269,37 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     {
         if (message.Payload is IUseSameActorScopeServiceMessage)
         {
-            return (IServiceScope)actor.Context.Metadata[MetadataConst.Scope]!;
+            return new ActorServiceScope(actor.Context.ServiceProvider);
         }
 
         return actor.Context.ServiceProvider.CreateAsyncScope();
     }
 
-    private ValueTask DisposeContextIfNecessary(IMessage message, IActorContext context)
+    private async ValueTask DisposeContextIfNecessary(IMessage message, object obj)
     {
-        if (message.Payload is IUseSameActorScopeServiceMessage)
+        if (message.Payload is not IUseSameActorScopeServiceMessage)
         {
-            return new ValueTask();
+            await DisposeAsync(obj);
         }
-
-        if (context is IAsyncDisposable asyncDisposable)
-        {
-            try
-            {
-                return asyncDisposable.DisposeAsync();
-            }
-            catch
-            {
-                // Ignore exceptions during context disposal to avoid masking original processing exceptions
-            }
-        }
-
-        return new ValueTask();
     }
 
-    public void Terminate(string? reason)
+    private async ValueTask DisposeAsync(object obj)
     {
-        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
-    }
-
-    public void SetFaulted(IMessage message, Exception exception)
-    {
-        Failure?.Invoke(this, new ActorFailureEventArgs(actor, message, exception));
+        try
+        {
+            if (obj is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else if (obj is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+        catch
+        {
+            // Ignore exceptions during context disposal to avoid masking original processing exceptions
+        }
     }
 
     /// <inheritdoc />
@@ -289,7 +312,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
         await StopAsync();
 
-        Delegate.RemoveAll(Failure, Failure);
+        Delegate.RemoveAll(Failed, Failed);
         Delegate.RemoveAll(Terminated, Terminated);
     }
 }

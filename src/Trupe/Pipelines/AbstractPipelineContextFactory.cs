@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -7,32 +6,21 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
-public class PipelineFactory(IServiceProvider provider, IPipelineLookup lookup) : IPipelineFactory
+public abstract class AbstractPipelineContextFactory(
+    IServiceProvider serviceProvider,
+    IPipelineLookup lookup
+)
 {
-    private static readonly ConcurrentDictionary<(Type, Type), ImmutableList<Type>> _cache = [];
-
-    public IPipeline Create(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
-        Type messageType
+    protected ImmutableList<object?> GetMetadata(
+        Type actorType,
+        Type messageType,
+        MiddlewareScope scope
     )
-    {
-        var types = _cache.GetOrAdd(
-            (actorType, messageType),
-            val => GetMiddlewareTypes(val.Item1, val.Item2)
-        );
-
-        return new Pipeline(
-            types.Select(type => (IMiddleware)provider.GetRequiredService(type)).ToImmutableList()
-        );
-    }
-
-    private ImmutableList<Type> GetMiddlewareTypes(Type actorType, Type messageType)
     {
         var middlewareAttributes = actorType
             .GetCustomAttributes<MiddlewareAttribute>(true)
@@ -51,8 +39,9 @@ public class PipelineFactory(IServiceProvider provider, IPipelineLookup lookup) 
         }
 
         return middlewareAttributes
+            .Where(x => x.Scope.HasFlag(scope))
             .OrderBy(x => x.Order)
-            .Select(x => x.MiddlewareType)
+            .Select(x => x.Metadata)
             .ToImmutableList();
     }
 

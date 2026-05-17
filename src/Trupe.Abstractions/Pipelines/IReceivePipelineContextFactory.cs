@@ -1,14 +1,14 @@
-using System;
 using System.Threading;
 using Trupe.Abstractions.Messages;
 
 namespace Trupe.Abstractions.Pipelines;
 
-public interface IPipelineContextFactory
+public interface IReceivePipelineContextFactory
 {
-    IPipelineContext Create(
+    IReceivePipelineContext Create(
+        IActor actor,
+        IActorContext actorContext,
         IMessage message,
-        Type actorType,
         object?[] metadata,
         CancellationToken cancellationToken
     );

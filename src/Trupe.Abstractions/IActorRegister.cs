@@ -42,4 +42,6 @@ public interface IActorRegister
     /// <param name="id">The unique identifier to check.</param>
     /// <returns><see langword="true"/> if an actor with the specified <paramref name="id"/> is registered; otherwise, <see langword="false"/>.</returns>
     bool Contains(string id);
+
+    void Unregister(string id);
 }

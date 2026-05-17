@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -101,6 +100,7 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
     /// <inheritdoc />
     public async ValueTask CleanAsync()
     {
+        _channel?.Writer.Complete();
         _channel = CreateChannel();
     }
 
@@ -111,31 +111,6 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
     )
     {
         await _channel.Writer.WriteAsync(message, cancellationToken);
-    }
-
-    /// <summary>
-    /// Returns an async enumerator that can be used to consume messages from the mailbox.
-    /// </summary>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>
-    /// An <see cref="IAsyncEnumerator{IMessage}"/> that can be used in
-    /// <c>await foreach</c> loops to process messages as they arrive.
-    /// </returns>
-    /// <remarks>
-    /// This method is called by the actor runtime to process messages from the mailbox.
-    /// The enumerator will block asynchronously when no messages are available and resume
-    /// when new messages are enqueued. This implements the core actor message processing loop.
-    ///
-    /// The mailbox is designed for single-reader access, ensuring that only one actor
-    /// processes messages from this mailbox at any given time.
-    /// </remarks>
-    public IAsyncEnumerator<IMessage> GetAsyncEnumerator(
-        CancellationToken cancellationToken = default
-    )
-    {
-        return _channel
-            .Reader.ReadAllAsync(cancellationToken)
-            .GetAsyncEnumerator(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -164,5 +139,21 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
         }
 
         return false;
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default)
+    {
+        if (
+            await _channel.Reader.WaitToReadAsync(cancellationToken)
+            && _channel.Reader.TryRead(out var message)
+        )
+        {
+            return message;
+        }
+        else
+        {
+            return null;
+        }
     }
 }

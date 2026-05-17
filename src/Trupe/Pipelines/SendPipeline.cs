@@ -4,14 +4,14 @@ using Trupe.Abstractions.Pipelines;
 
 namespace Trupe.Pipelines;
 
-public class Pipeline(ImmutableList<IMiddleware> middlewares) : IPipeline
+public class SendPipeline(ImmutableList<ISendMiddleware> middlewares) : ISendPipeline
 {
-    public ValueTask ExecuteAsync(IPipelineContext contex)
+    public ValueTask ExecuteAsync(ISendPipelineContext context)
     {
-        return InvokeAsync(contex, 0);
+        return InvokeAsync(context, 0);
     }
 
-    private ValueTask InvokeAsync(IPipelineContext contex, int next)
+    private ValueTask InvokeAsync(ISendPipelineContext contex, int next)
     {
         if (middlewares.Count == next)
         {

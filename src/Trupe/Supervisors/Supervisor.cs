@@ -10,11 +10,9 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.ActorReferences;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
 
@@ -145,7 +143,7 @@ public abstract partial class Supervisor(ILogger logger)
         CancellationToken cancellationToken
     )
     {
-        await CreateActorAsync(message.Specification, (LocalActorReference)message.Reference);
+        await CreateActorAsync(message.Specification, (ActorReference)message.Reference);
     }
 
     /// <summary>
@@ -276,7 +274,11 @@ public abstract partial class Supervisor(ILogger logger)
             );
         }
 
-        var actorRef = new LocalActorReference(specification.Mailbox);
+        var actorRef = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
         Context.Self.Tell(new AddActor(specification, actorRef));
 
         return actorRef;
@@ -338,7 +340,11 @@ public abstract partial class Supervisor(ILogger logger)
             );
         }
 
-        var actorRef = new LocalActorReference(specification.Mailbox);
+        var actorRef = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
 
         var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
 
@@ -413,7 +419,7 @@ public abstract partial class Supervisor(ILogger logger)
     protected virtual async Task StopActorAsync(Child metadata)
     {
         Log.StoppingActor(Logger);
-        metadata.Process.Failure -= HandleFailure;
+        metadata.Process.Failed -= HandleFailure;
         metadata.Process.Terminated -= HandleTermination;
         await metadata.Process.StopAsync();
         Log.ActorStopped(Logger);
@@ -580,12 +586,12 @@ public abstract partial class Supervisor(ILogger logger)
         await child.Process.DisposeAsync();
         Log.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
-        child.Process.Failure += HandleFailure;
+        child.Process.Failed += HandleFailure;
         child.Process.Terminated += HandleTermination;
 
         await child.Process.StartAsync(
-            new LocalTellMessage(new InitializeActor(), []),
-            new LocalTellMessage(new AfterRestartActor(), [])
+            new TellMessage(new InitializeActor(), []),
+            new TellMessage(new AfterRestartActor(), [])
         );
         Log.ActorProcessStarted(Logger);
     }
@@ -670,14 +676,14 @@ public abstract partial class Supervisor(ILogger logger)
     /// <returns>The metadata for the created child actor.</returns>
     protected virtual async Task<Child> CreateActorAsync(
         IChildSpecification specification,
-        LocalActorReference reference
+        ActorReference reference
     )
     {
         var actor = ActorFactory.CreateActor(specification.ActorType);
         actor.Context = new ActorContext(reference, Context.ServiceProvider.CreateAsyncScope());
 
         var process = new ActorProcess(actor, specification.Mailbox);
-        process.Failure += HandleFailure;
+        process.Failed += HandleFailure;
         process.Terminated += HandleTermination;
 
         var metadata = new Child(
@@ -690,7 +696,7 @@ public abstract partial class Supervisor(ILogger logger)
         );
         Children = Children.Add(metadata);
 
-        await process.StartAsync(new LocalTellMessage(new InitializeActor(), []));
+        await process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         return metadata;
     }

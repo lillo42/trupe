@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
-using Trupe.ActorReferences;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;
@@ -58,7 +57,11 @@ public abstract class DynamicSupervisor(ILogger logger)
     /// <returns>A reference to the newly created child actor.</returns>
     protected override IActorReference AddChild(IChildSpecification specification)
     {
-        var actorRef = new LocalActorReference(specification.Mailbox);
+        var actorRef = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
         Context.Self.Tell(new AddActor(specification, actorRef));
 
         return actorRef;
@@ -118,7 +121,11 @@ public abstract class DynamicSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
-        var actorRef = new LocalActorReference(specification.Mailbox);
+        var actorRef = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
 
         var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
 

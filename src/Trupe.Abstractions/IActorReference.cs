@@ -31,7 +31,7 @@ public interface IActorReference : IEquatable<IActorReference>
     /// Subscribers are notified when the actor stops, allowing dependent components
     /// to react to actor lifecycle changes (e.g., cleanup or restart logic).
     /// </remarks>
-    event EventHandler<TerminatedEventArgs>? OnTerminate;
+    event EventHandler<TerminatedEventArgs>? Terminated;
 
     /// <summary>
     /// Sends a request message to the actor and synchronously waits for a response.
@@ -95,7 +95,7 @@ public interface IActorReference : IEquatable<IActorReference>
     /// a temporary actor to handle the response, which is automatically cleaned up.
     /// </para>
     /// </remarks>
-    ValueTask<TResponse> AskAsync<TResponse>(
+    Task<TResponse> AskAsync<TResponse>(
         object request,
         CancellationToken cancellationToken = default
     );
@@ -108,7 +108,7 @@ public interface IActorReference : IEquatable<IActorReference>
     /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <returns>A <see cref="ValueTask{TResult}"/> containing the response from the actor.</returns>
-    ValueTask<TResponse> AskAsync<TResponse>(
+    Task<TResponse> AskAsync<TResponse>(
         object request,
         Dictionary<string, object>? metadata,
         CancellationToken cancellationToken = default

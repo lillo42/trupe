@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Trupe.Abstractions.Factories;
+namespace Trupe.Abstractions;
 
 /// <summary>
 /// Defines a factory for creating actor instances within the Trupe actor system.

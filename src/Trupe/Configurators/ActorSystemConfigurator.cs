@@ -3,7 +3,6 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Extensions;
@@ -38,15 +37,12 @@ public class ActorSystemConfigurator
         _serviceCollection.TryAddSingleton<ActorSystem>();
         _serviceCollection.TryAddSingleton<IRootSupervisor, RootSupervisor>();
         _serviceCollection.TryAddSingleton(_ => ActorRegister.Instance);
-        _serviceCollection.TryAddTransient<IPipelineFactory, PipelineFactory>();
-        _serviceCollection.TryAddTransient<IPipelineContextFactory, PipelineContextFactory>();
-        _serviceCollection.TryAddSingleton<IPipelineLookup, PipelineRegistry>();
-        _serviceCollection.TryAddSingleton<IActorFactory, DependencyInjectionActorFactory>();
 
-        _serviceCollection.TryAddSingleton<SettablePipelineContextAccessor>();
-        _serviceCollection.TryAddSingleton<IPipelineContextAccessor>(provider =>
-            provider.GetRequiredService<SettablePipelineContextAccessor>()
-        );
+        _serviceCollection.TryAddTransient<IReceivePipelineFactory, ReceivePipelineFactory>();
+
+        _serviceCollection.TryAddTransient<ISendPipelineFactory, SendPipelineFactory>();
+
+        _serviceCollection.TryAddSingleton<IActorFactory, ActorFactory>();
 
         _serviceCollection.TryAddSingleton<AskMiddleware>();
         _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
