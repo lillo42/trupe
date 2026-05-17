@@ -1,15 +1,25 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions.Messages;
-using Trupe.ActorReferences;
+using Trupe.Extensions;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 
 namespace Trupe.Tests.ActorReferences;
 
-public class LocalActorReferenceTest
+public class ActorReferenceTest
 {
+    private static ActorReference CreateActorReference(ChannelMailbox mailbox)
+    {
+        var provider = new ServiceCollection()
+            .AddTrupe(_ => { })
+            .BuildServiceProvider();
+
+        return new ActorReference(typeof(object), provider, mailbox);
+    }
+
     [Test]
     [Timeout(5000)]
     public async Task Tell_Should_ReturnImmediately(CancellationToken cancellationToken)
@@ -18,20 +28,17 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
         actorRef.Tell(message);
 
         // Assert
-        await foreach (var receivedMessage in mailbox.WithCancellation(cancellationToken))
-        {
-            await Assert
-                .That(receivedMessage)
-                .IsNotNull()
-                .And.Member(x => x.Payload, x => x.IsSameReferenceAs(message));
-            break; // We only expect one message
-        }
+        var receivedMessage = await mailbox.DequeueAsync(cancellationToken);
+        await Assert
+            .That(receivedMessage)
+            .IsNotNull()
+            .And.Member(x => x!.Payload, x => x.IsSameReferenceAs(message));
     }
 
     [Test]
@@ -41,13 +48,13 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(new object(), []), CancellationToken.None);
         await Assert
             .That(() => actorRef.Tell(message, TimeSpan.FromSeconds(1)))
-            .Throws<TimeoutException>();
+            .Throws<OperationCanceledException>();
     }
 
     [Test]
@@ -58,20 +65,17 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
         await actorRef.TellAsync(message, cancellationToken);
 
         // Assert
-        await foreach (var receivedMessage in mailbox.WithCancellation(cancellationToken))
-        {
-            await Assert
-                .That(receivedMessage)
-                .IsNotNull()
-                .And.Member(x => x.Payload, x => x.IsSameReferenceAs(message));
-            break; // We only expect one message
-        }
+        var receivedMessage = await mailbox.DequeueAsync(cancellationToken);
+        await Assert
+            .That(receivedMessage)
+            .IsNotNull()
+            .And.Member(x => x!.Payload, x => x.IsSameReferenceAs(message));
     }
 
     [Test]
@@ -81,10 +85,10 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(new object(), []), CancellationToken.None);
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert
@@ -101,23 +105,20 @@ public class LocalActorReferenceTest
         var responseValue = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
         var task = Task.Run(
             async () =>
             {
-                await foreach (var receivedMessage in mailbox.WithCancellation(cancellationToken))
-                {
-                    await Assert
-                        .That(receivedMessage)
-                        .IsNotNull()
-                        .And.Member(x => x.Payload, x => x.IsSameReferenceAs(message))
-                        .And.IsTypeOf<IAskMessage>();
-                    var askMessage = (IAskMessage)receivedMessage;
-                    askMessage.SetResult(responseValue);
-                    break; // We only expect one message
-                }
+                var receivedMessage = await mailbox.DequeueAsync(cancellationToken);
+                await Assert
+                    .That(receivedMessage)
+                    .IsNotNull()
+                    .And.Member(x => x!.Payload, x => x.IsSameReferenceAs(message))
+                    .And.IsTypeOf<IAskMessage>();
+                var askMessage = (IAskMessage)receivedMessage!;
+                askMessage.SetResult(responseValue);
             },
             cancellationToken
         );
@@ -135,13 +136,13 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(new object(), []), CancellationToken.None);
         await Assert
             .That(() => actorRef.Ask<object>(message, TimeSpan.FromSeconds(1)))
-            .Throws<TimeoutException>();
+            .Throws<OperationCanceledException>();
     }
 
     [Test]
@@ -153,23 +154,20 @@ public class LocalActorReferenceTest
         var responseValue = new object();
 
         var mailbox = new ChannelMailbox();
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
         var task = Task.Run(
             async () =>
             {
-                await foreach (var receivedMessage in mailbox.WithCancellation(cancellationToken))
-                {
-                    await Assert
-                        .That(receivedMessage)
-                        .IsNotNull()
-                        .And.Member(x => x.Payload, x => x.IsSameReferenceAs(message))
-                        .And.IsTypeOf<IAskMessage>();
-                    var askMessage = (IAskMessage)receivedMessage;
-                    askMessage.SetResult(responseValue);
-                    break; // We only expect one message
-                }
+                var receivedMessage = await mailbox.DequeueAsync(cancellationToken);
+                await Assert
+                    .That(receivedMessage)
+                    .IsNotNull()
+                    .And.Member(x => x!.Payload, x => x.IsSameReferenceAs(message))
+                    .And.IsTypeOf<IAskMessage>();
+                var askMessage = (IAskMessage)receivedMessage!;
+                askMessage.SetResult(responseValue);
             },
             cancellationToken
         );
@@ -187,13 +185,13 @@ public class LocalActorReferenceTest
         var message = new object();
 
         var mailbox = new ChannelMailbox(1);
-        var actorRef = new LocalActorReference(mailbox);
+        var actorRef = CreateActorReference(mailbox);
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(new object(), []), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(new object(), []), CancellationToken.None);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert
-            .That(async () => await actorRef.AskAsync<object>(message, cts.Token).AsTask())
+            .That(async () => await actorRef.AskAsync<object>(message, cts.Token))
             .Throws<OperationCanceledException>();
     }
 }

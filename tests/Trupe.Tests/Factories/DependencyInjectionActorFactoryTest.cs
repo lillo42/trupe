@@ -16,7 +16,7 @@ public class DependencyInjectionActorFactoryTest
         var services = new ServiceCollection();
         services.AddTransient<TestActor>();
         var serviceProvider = services.BuildServiceProvider();
-        var factory = new DependencyInjectionActorFactory(serviceProvider);
+        var factory = new ActorFactory(serviceProvider);
 
         // Act
         var actor = factory.CreateActor(typeof(TestActor));
@@ -32,7 +32,7 @@ public class DependencyInjectionActorFactoryTest
         // Arrange
         var services = new ServiceCollection();
         var serviceProvider = services.BuildServiceProvider();
-        var factory = new DependencyInjectionActorFactory(serviceProvider);
+        var factory = new ActorFactory(serviceProvider);
 
         // Act & Assert
         var act = () => factory.CreateActor(typeof(TestActor));

@@ -7,14 +7,14 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using Trupe;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
-using Trupe.ActorReferences;
+using Trupe.Extensions;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors;
@@ -73,7 +73,6 @@ public class PartitionSupervisorTest
     }
 
     private class TestPartitionSupervisor(
-        IActorFactory actorFactory,
         ILogger logger,
         int workers = 3,
         Strategy? strategy = null,
@@ -81,7 +80,7 @@ public class PartitionSupervisorTest
         TimeSpan? restartWindow = null,
         RestartPolicy? defaultRestartPolicy = null,
         Func<CancellationToken, ValueTask>? onInitialize = null
-    ) : PartitionSupervisor<SimpleActor>(actorFactory, logger, workers)
+    ) : PartitionSupervisor<SimpleActor>(logger, workers)
     {
         private readonly Strategy _strategy = strategy ?? Strategy.OneForOne;
         private readonly int _maxRestarts = maxRestarts ?? 3;
@@ -107,8 +106,8 @@ public class PartitionSupervisorTest
         // Expose protected members for testing
         public new ImmutableList<Child> Children => base.Children;
 
-        public new Child CreateActor(ChildSpecification specification) =>
-            base.CreateActorAsync(specification);
+        public async Task<Child> CreateActor(ChildSpecification specification) =>
+            await base.CreateActorAsync(specification);
 
         public new IActorReference GetActorReference<TKey>(TKey key)
             where TKey : notnull => base.GetActorReference(key);
@@ -155,7 +154,6 @@ public class PartitionSupervisorTest
         factory ??= Substitute.For<IActorFactory>();
         var logger = Substitute.For<ILogger>();
         var supervisor = new TestPartitionSupervisor(
-            factory,
             logger,
             workers,
             strategy,
@@ -165,9 +163,13 @@ public class PartitionSupervisorTest
             onInitialize
         );
         selfMailbox ??= new ChannelMailbox();
+        var services = new ServiceCollection();
+        services.AddTrupe(c => { });
+        services.AddSingleton(factory);
+        var serviceProvider = services.BuildServiceProvider();
         supervisor.Context = new ActorContext(
-            new LocalActorReference(selfMailbox),
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ActorReference(typeof(TestPartitionSupervisor), serviceProvider, selfMailbox),
+            serviceProvider.CreateScope()
         );
         return supervisor;
     }
@@ -187,10 +189,10 @@ public class PartitionSupervisorTest
     {
         actor ??= new SimpleActor();
         mailbox ??= new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
         actor.Context = new ActorContext(
             reference,
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
         );
         var process = new ActorProcess(actor, mailbox);
         return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
@@ -276,7 +278,7 @@ public class PartitionSupervisorTest
             (object)
                 new ActorFailed(
                     child.Actor,
-                    new LocalTellMessage("test", []),
+                    new TellMessage("test", []),
                     new Exception("fail")
                 )
         );
@@ -329,7 +331,7 @@ public class PartitionSupervisorTest
         var spec = new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox };
 
         // Act
-        var child = supervisor.CreateActor(spec);
+        var child = await supervisor.CreateActor(spec);
 
         // Assert
         await Assert.That(supervisor.Children.Count).IsEqualTo(1);
@@ -350,7 +352,7 @@ public class PartitionSupervisorTest
         };
 
         // Act
-        var child = supervisor.CreateActor(spec);
+        var child = await supervisor.CreateActor(spec);
 
         // Assert
         await Assert.That(child.RestartPolicy).IsEqualTo(RestartPolicy.Temporary);
@@ -365,7 +367,7 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         // Act & Assert
-        var action = () => supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        var action = async () => await supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
         await Assert.That(action).Throws<SupervisorAlreadyInitializedException>();
     }
 
@@ -375,10 +377,10 @@ public class PartitionSupervisorTest
         // Arrange
         var factory = CreateFactory();
         var supervisor = CreateSupervisor(factory: factory, workers: 1);
-        supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        await supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
 
         // Act & Assert - workers limit reached
-        var action = () => supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        var action = async () => await supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
         await Assert.That(action).Throws<TooManyWorkerException>();
     }
 
@@ -472,7 +474,7 @@ public class PartitionSupervisorTest
             (object)
                 new ActorFailed(
                     child.Actor,
-                    new LocalTellMessage("test", []),
+                    new TellMessage("test", []),
                     new Exception("fail")
                 )
         );
@@ -500,7 +502,7 @@ public class PartitionSupervisorTest
             (object)
                 new ActorFailed(
                     child.Actor,
-                    new LocalTellMessage("test", []),
+                    new TellMessage("test", []),
                     new Exception("fail")
                 )
         );
@@ -518,7 +520,7 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var askMessage = new LocalAskMessage("test", [], CancellationToken.None);
+        var askMessage = new AskMessage("test", [], CancellationToken.None);
 
         // Act
         await supervisor.HandleAsync(
@@ -539,8 +541,8 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var nestedAskMessage = new LocalAskMessage("nested", [], CancellationToken.None);
-        var tellMessage = new LocalTellMessage("test", []);
+        var nestedAskMessage = new AskMessage("nested", [], CancellationToken.None);
+        var tellMessage = new TellMessage("test", []);
         var escalateException = new EscalateFailureException(
             "escalated",
             child.Reference,
@@ -573,7 +575,7 @@ public class PartitionSupervisorTest
             (object)
                 new ActorFailed(
                     unknownActor,
-                    new LocalTellMessage("test", []),
+                    new TellMessage("test", []),
                     new Exception("fail")
                 )
         );
@@ -599,7 +601,7 @@ public class PartitionSupervisorTest
             (object)
                 new ActorFailed(
                     child.Actor,
-                    new LocalTellMessage("test", []),
+                    new TellMessage("test", []),
                     new Exception("fail1")
                 )
         );
@@ -610,7 +612,7 @@ public class PartitionSupervisorTest
                 (object)
                     new ActorFailed(
                         child.Actor,
-                        new LocalTellMessage("test", []),
+                        new TellMessage("test", []),
                         new Exception("fail2")
                     )
             );
@@ -653,7 +655,7 @@ public class PartitionSupervisorTest
 
         var child = supervisor.Children[0];
         var terminateCalled = false;
-        child.Reference.OnTerminate += (_, _) => terminateCalled = true;
+        child.Reference.Terminated += (_, _) => terminateCalled = true;
 
         // Act
         await supervisor.HandleAsync((object)new ActorTerminated(child.Actor, "done"));
@@ -821,7 +823,7 @@ public class PartitionSupervisorTest
         await supervisor.InitializeAsync();
 
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test", []);
+        var tellMessage = new TellMessage("test", []);
         var innerException = new InvalidOperationException("inner");
 
         // Act & Assert
@@ -954,7 +956,7 @@ public class PartitionSupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(actor, new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory, workers: 1);
 
-        supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
+        await supervisor.CreateActor(new ChildSpecification(typeof(SimpleActor)));
         var child = supervisor.Children[0];
 
         // Act & Assert - should not throw
@@ -972,12 +974,12 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
         supervisor.Context = new ActorContext(
-            new LocalActorReference(supervisorMailbox),
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ActorReference(typeof(TestPartitionSupervisor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), supervisorMailbox),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
         );
 
         var actor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test", []);
+        var tellMessage = new TellMessage("test", []);
         var exception = new Exception("fail");
         var args = new ActorFailureEventArgs(actor, tellMessage, exception);
 
@@ -986,14 +988,12 @@ public class PartitionSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<ActorFailed>();
-            var failed = (ActorFailed)msg.Payload;
-            await Assert.That(failed.Actor).IsSameReferenceAs(actor);
-            await Assert.That(failed.Exception).IsSameReferenceAs(exception);
-            break;
-        }
+        var msg = await supervisorMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg).IsNotNull();
+        await Assert.That(msg!.Payload).IsTypeOf<ActorFailed>();
+        var failed = (ActorFailed)msg.Payload;
+        await Assert.That(failed.Actor).IsSameReferenceAs(actor);
+        await Assert.That(failed.Exception).IsSameReferenceAs(exception);
     }
 
     [Test]
@@ -1003,8 +1003,8 @@ public class PartitionSupervisorTest
         var supervisor = CreateSupervisor(workers: 1);
         var supervisorMailbox = new ChannelMailbox();
         supervisor.Context = new ActorContext(
-            new LocalActorReference(supervisorMailbox),
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ActorReference(typeof(TestPartitionSupervisor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), supervisorMailbox),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
         );
 
         var actor = new SimpleActor();
@@ -1015,14 +1015,12 @@ public class PartitionSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<ActorTerminated>();
-            var terminated = (ActorTerminated)msg.Payload;
-            await Assert.That(terminated.Actor).IsSameReferenceAs(actor);
-            await Assert.That(terminated.Reason).IsEqualTo("shutdown");
-            break;
-        }
+        var msg = await supervisorMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg).IsNotNull();
+        await Assert.That(msg!.Payload).IsTypeOf<ActorTerminated>();
+        var terminated = (ActorTerminated)msg.Payload;
+        await Assert.That(terminated.Actor).IsSameReferenceAs(actor);
+        await Assert.That(terminated.Reason).IsEqualTo("shutdown");
     }
 
     #endregion
@@ -1126,10 +1124,10 @@ public class PartitionSupervisorTest
         var mailbox = Substitute.For<IMailbox>();
         var supervisorActor = new SimpleSupervisorActor();
         supervisorActor.Context = new ActorContext(
-            new LocalActorReference(new ChannelMailbox()),
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ActorReference(typeof(SimpleSupervisorActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox()),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
         );
-        var reference = new LocalActorReference(new ChannelMailbox());
+        var reference = new ActorReference(typeof(SimpleSupervisorActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
         var process = new ActorProcess(supervisorActor, new ChannelMailbox());
         var child = new Child(
             supervisorActor,
@@ -1155,10 +1153,10 @@ public class PartitionSupervisorTest
         var mailbox = Substitute.For<IMailbox>();
         var simpleActor = new SimpleActor();
         simpleActor.Context = new ActorContext(
-            new LocalActorReference(new ChannelMailbox()),
-            new ServiceCollection().BuildServiceProvider().CreateScope()
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox()),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
         );
-        var reference = new LocalActorReference(new ChannelMailbox());
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
         var child = new Child(
             simpleActor,

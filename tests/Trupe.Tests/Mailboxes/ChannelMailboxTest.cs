@@ -13,15 +13,12 @@ public class ChannelMailboxTest
     {
         var mailbox = new ChannelMailbox();
 
-        var message = new LocalTellMessage(new object(), []);
+        var message = new TellMessage(new object(), []);
 
         await mailbox.EnqueueAsync(message, cancellationToken);
 
-        await foreach (var dequeuedMessage in mailbox.WithCancellation(cancellationToken))
-        {
-            await Assert.That(dequeuedMessage).EqualTo(message);
-            break;
-        }
+        var dequeuedMessage = await mailbox.DequeueAsync(cancellationToken);
+        await Assert.That(dequeuedMessage).EqualTo(message);
     }
 
     [Test]
@@ -29,16 +26,13 @@ public class ChannelMailboxTest
     public async Task DequeueEnqueue_Should_Successed(CancellationToken cancellationToken)
     {
         var mailbox = new ChannelMailbox();
-        var message = new LocalTellMessage(new object(), []);
+        var message = new TellMessage(new object(), []);
 
         var dequeueTask = Task.Run(
             async () =>
             {
-                await foreach (var dequeuedMessage in mailbox.WithCancellation(cancellationToken))
-                {
-                    await Assert.That(dequeuedMessage).EqualTo(message);
-                    break;
-                }
+                var dequeuedMessage = await mailbox.DequeueAsync(cancellationToken);
+                await Assert.That(dequeuedMessage).EqualTo(message);
             },
             cancellationToken
         );
