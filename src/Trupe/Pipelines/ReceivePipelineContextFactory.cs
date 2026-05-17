@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
@@ -13,8 +12,6 @@ public class ReceivePipelineContextFactory(IServiceProvider serviceProvider, IPi
     : AbstractPipelineContextFactory(serviceProvider, lookup),
         IReceivePipelineContextFactory
 {
-    private static readonly ConcurrentDictionary<(Type, Type), ImmutableList<object?>> _cache = [];
-
     public IReceivePipelineContext Create(
         IActor actor,
         IActorContext actorContext,
@@ -23,13 +20,11 @@ public class ReceivePipelineContextFactory(IServiceProvider serviceProvider, IPi
         CancellationToken cancellationToken
     )
     {
-        var finalMetadata = _cache
-            .GetOrAdd(
-                (actor.GetType(), message.Payload.GetType()),
-                val => GetMetadata(val.Item1, val.Item2, MiddlewareScope.Receive)
-            )
-            .ToList();
-
+        var finalMetadata = GetMetadata(
+            actor.GetType(),
+            message.Payload.GetType(),
+            MiddlewareScope.Receive
+        );
         finalMetadata.AddRange(metadata);
 
         return new ReceivePipelineContext(

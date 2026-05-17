@@ -11,7 +11,7 @@ public class SendPipeline(ImmutableList<ISendMiddleware> middlewares) : ISendPip
         return InvokeAsync(context, 0);
     }
 
-    private ValueTask InvokeAsync(ISendPipelineContext contex, int next)
+    private ValueTask InvokeAsync(ISendPipelineContext context, int next)
     {
         if (middlewares.Count == next)
         {
@@ -19,6 +19,6 @@ public class SendPipeline(ImmutableList<ISendMiddleware> middlewares) : ISendPip
         }
 
         var middleware = middlewares[next];
-        return middleware.InvokeAsync(contex, c => InvokeAsync(c, next + 1));
+        return middleware.InvokeAsync(context, c => InvokeAsync(c, next + 1));
     }
 }

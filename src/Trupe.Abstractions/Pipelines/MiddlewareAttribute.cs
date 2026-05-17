@@ -35,7 +35,7 @@ public abstract class MiddlewareAttribute : Attribute, IMiddlewareConfiguration
                 scope |= MiddlewareScope.Send;
             }
 
-            if (MiddlewareType.IReceiveMiddleware())
+            if (MiddlewareType.IsReceiveMiddleware())
             {
                 scope |= MiddlewareScope.Receive;
             }

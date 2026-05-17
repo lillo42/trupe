@@ -10,7 +10,5 @@ public class MailboxDispatcherMiddleware : ISendMiddleware
     {
         var mailbox = context.Metadata.GetRequiredMetadata<MailboxMetadata>();
         await mailbox.Mailbox.EnqueueAsync(context.Message, context.CancellationToken);
-
-        await next(context);
     }
 }

@@ -16,11 +16,7 @@ public abstract class AbstractPipelineContextFactory(
     IPipelineLookup lookup
 )
 {
-    protected ImmutableList<object?> GetMetadata(
-        Type actorType,
-        Type messageType,
-        MiddlewareScope scope
-    )
+    protected List<object?> GetMetadata(Type actorType, Type messageType, MiddlewareScope scope)
     {
         var middlewareAttributes = actorType
             .GetCustomAttributes<MiddlewareAttribute>(true)
@@ -42,7 +38,7 @@ public abstract class AbstractPipelineContextFactory(
             .Where(x => x.Scope.HasFlag(scope))
             .OrderBy(x => x.Order)
             .Select(x => x.Metadata)
-            .ToImmutableList();
+            .ToList();
     }
 
     private static IEnumerable<MiddlewareAttribute> GetHandleMessage(Type actorType)

@@ -38,7 +38,7 @@ public static class TypeExtensions
         return typeof(IRootSupervisor).IsAssignableFrom(type);
     }
 
-    public static bool IReceiveMiddleware(this Type type)
+    public static bool IsReceiveMiddleware(this Type type)
     {
         return typeof(IReceiveMiddleware).IsAssignableFrom(type);
     }

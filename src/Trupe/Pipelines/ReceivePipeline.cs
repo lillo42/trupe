@@ -11,7 +11,7 @@ public class ReceivePipeline(ImmutableList<IReceiveMiddleware> middlewares) : IR
         return InvokeAsync(context, 0);
     }
 
-    private ValueTask InvokeAsync(IReceivePipelineContext contex, int next)
+    private ValueTask InvokeAsync(IReceivePipelineContext context, int next)
     {
         if (middlewares.Count == next)
         {
@@ -19,6 +19,6 @@ public class ReceivePipeline(ImmutableList<IReceiveMiddleware> middlewares) : IR
         }
 
         var middleware = middlewares[next];
-        return middleware.InvokeAsync(contex, c => InvokeAsync(c, next + 1));
+        return middleware.InvokeAsync(context, c => InvokeAsync(c, next + 1));
     }
 }

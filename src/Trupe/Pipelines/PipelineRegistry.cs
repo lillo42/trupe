@@ -1,39 +1,49 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Options;
+using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
-using Trupe.Extensions;
 
 namespace Trupe.Pipelines;
 
 public class PipelineRegistry(IOptions<PipelineOptions> options) : IPipelineLookup
 {
+    private readonly ConcurrentDictionary<
+        (Type, Type),
+        IEnumerable<IMiddlewareConfiguration>
+    > _cache = new();
+
     public IEnumerable<IMiddlewareConfiguration> GetMiddlewares(Type actorType, Type messageType)
     {
-        return options
-            .Value.Middlewares.Where(mw =>
-                (mw.ActorType == null || mw.ActorType.IsAssignableFrom(actorType))
-                && (mw.MessageType == null || mw.MessageType.IsAssignableFrom(messageType))
-            )
-            .Select(mw =>
-            {
-                var scope = MiddlewareScope.None;
-                if (mw.MiddlewareType.IReceiveMiddleware())
-                {
-                    scope |= MiddlewareScope.Receive;
-                }
+        return _cache.GetOrAdd(
+            (actorType, messageType),
+            val =>
+                options
+                    .Value.Middlewares.Where(mw =>
+                        (mw.ActorType == null || mw.ActorType.IsAssignableFrom(val.Item1))
+                        && (mw.MessageType == null || mw.MessageType.IsAssignableFrom(val.Item2))
+                    )
+                    .Select(mw =>
+                    {
+                        var scope = MiddlewareScope.None;
+                        if (mw.MiddlewareType.IsReceiveMiddleware())
+                        {
+                            scope |= MiddlewareScope.Receive;
+                        }
 
-                if (mw.MiddlewareType.IsSendMiddleware())
-                {
-                    scope |= MiddlewareScope.Send;
-                }
+                        if (mw.MiddlewareType.IsSendMiddleware())
+                        {
+                            scope |= MiddlewareScope.Send;
+                        }
 
-                return new MiddlewareConfiguration(mw.Order, mw.Metadata, mw.MiddlewareType)
-                {
-                    Scope = scope,
-                };
-            });
+                        return new MiddlewareConfiguration(mw.Order, mw.Metadata, mw.MiddlewareType)
+                        {
+                            Scope = scope,
+                        };
+                    })
+        );
     }
 }

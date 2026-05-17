@@ -317,7 +317,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
         await StopAsync();
 
-        Delegate.RemoveAll(Failed, Failed);
-        Delegate.RemoveAll(Terminated, Terminated);
+        Failed = null;
+        Terminated = null;
     }
 }
