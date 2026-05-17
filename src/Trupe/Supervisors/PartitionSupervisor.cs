@@ -459,7 +459,7 @@ public abstract partial class PartitionSupervisor<
         var now = DateTimeOffset.UtcNow;
         if ((now - metadata.LastRestartTime) > RestartWindow)
         {
-            PartitionLog.ResetingActorCounter(Logger, metadata.ActorType);
+            PartitionLog.ResettingActorCounter(Logger, metadata.ActorType);
             metadata.RestartCount = 0;
         }
     }
@@ -542,7 +542,7 @@ public abstract partial class PartitionSupervisor<
         Exception exception
     )
     {
-        PartitionLog.ScalatingError(Logger);
+        PartitionLog.EscalatingError(Logger);
 
         await metadata.Process.StopAsync();
         throw new EscalateFailureException(
@@ -580,7 +580,7 @@ public abstract partial class PartitionSupervisor<
     /// <returns>A task representing the reset operation.</returns>
     protected virtual async Task ResetActorAsync(Child child)
     {
-        PartitionLog.ResetingActor(Logger);
+        PartitionLog.ResettingActor(Logger);
 
         await StopActorAsync(child);
         await BeforeRestartActorAsync(child);
@@ -596,7 +596,7 @@ public abstract partial class PartitionSupervisor<
             child.Reference,
             Context.ServiceProvider.CreateAsyncScope()
         );
-        PartitionLog.ActoCreateWithSuccess(Logger);
+        PartitionLog.ActorCreatedWithSuccess(Logger);
 
         await child.Process.DisposeAsync();
         PartitionLog.CreateNewProcess(Logger);
@@ -697,7 +697,7 @@ internal static partial class PartitionLog
     public static partial void ActorResumed(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
-    public static partial void ResetingActor(ILogger logger);
+    public static partial void ResettingActor(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
     public static partial void ActorRestarted(ILogger logger);
@@ -727,7 +727,7 @@ internal static partial class PartitionLog
     public static partial void CreatingNewActorInstance(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
-    public static partial void ActoCreateWithSuccess(ILogger logger);
+    public static partial void ActorCreatedWithSuccess(ILogger logger);
 
     [LoggerMessage(
         Level = LogLevel.Trace,
@@ -742,13 +742,13 @@ internal static partial class PartitionLog
     public static partial void ActorProcessStarted(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
-    public static partial void ScalatingError(ILogger logger);
+    public static partial void EscalatingError(ILogger logger);
 
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "Resetting restart counter for actor type {ActorType} after restart window elapsed"
     )]
-    public static partial void ResetingActorCounter(ILogger logger, Type actorType);
+    public static partial void ResettingActorCounter(ILogger logger, Type actorType);
 
     [LoggerMessage(
         Level = LogLevel.Trace,
