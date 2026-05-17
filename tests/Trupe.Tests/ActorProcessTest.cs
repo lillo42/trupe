@@ -72,7 +72,7 @@ public class ActorProcessTest
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.StartAsync();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -106,7 +106,7 @@ public class ActorProcessTest
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.StartAsync();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -141,7 +141,7 @@ public class ActorProcessTest
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.StartAsync();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
@@ -174,7 +174,7 @@ public class ActorProcessTest
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.StartAsync();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 

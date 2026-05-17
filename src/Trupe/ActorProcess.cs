@@ -48,7 +48,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     public event EventHandler<ActorFailureEventArgs>? Failed;
 
     /// <summary>
-    /// Event raised when the actor receives a <see cref="Abstractions.SystemMessages.Terminate"/> message and stops processing.
+    /// Event raised when the actor receives a <see cref="Terminate"/> message and stops processing.
     /// </summary>
     /// <remarks>
     /// Subscribers can use this event to detect voluntary actor termination, as opposed to

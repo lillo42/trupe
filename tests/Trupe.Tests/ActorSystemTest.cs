@@ -20,7 +20,7 @@ public class ActorSystemTest
         );
 
         // Act
-        actorSystem.StartAsync();
+        await actorSystem.StartAsync();
 
         // Assert
         await Assert.That(rootSupervisor.Context).IsNotNull();
@@ -37,10 +37,11 @@ public class ActorSystemTest
             rootSupervisor,
             new ServiceCollection().BuildServiceProvider()
         );
-        actorSystem.StartAsync();
+
+        await actorSystem.StartAsync();
 
         // Act & Assert
-        var act = () => actorSystem.StartAsync();
+        var act = async () => await actorSystem.StartAsync();
         await Assert.That(act).ThrowsExactly<InvalidOperationException>();
         await actorSystem.StopAsync();
     }
@@ -55,13 +56,14 @@ public class ActorSystemTest
             rootSupervisor,
             new ServiceCollection().BuildServiceProvider()
         );
-        actorSystem.StartAsync();
+
+        await actorSystem.StartAsync();
 
         // Act
         await actorSystem.StopAsync();
 
         // Assert - Starting again should work since it's stopped
-        actorSystem.StartAsync();
+        await actorSystem.StartAsync();
         await actorSystem.StopAsync();
     }
 
