@@ -96,28 +96,34 @@ public class ActorSystemConfigurator
     }
 
     /// <summary>
-    /// Registers an actor type with the dependency injection container as a transient service.
+    /// Registers an actor type with the dependency injection container as a transient service
+    /// and optionally configures its pipeline middlewares.
     /// </summary>
     /// <typeparam name="TActor">The type of the actor to register.</typeparam>
+    /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator AddActor<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
-    >()
+    >(Action<ActorConfigurator>? configure = null)
         where TActor : class, IActor
     {
         _serviceCollection.TryAddTransient<TActor>();
+        configure?.Invoke(new ActorConfigurator(_serviceCollection, typeof(TActor)));
         return this;
     }
 
     /// <summary>
-    /// Registers an actor type with the dependency injection container as a transient service.
+    /// Registers an actor type with the dependency injection container as a transient service
+    /// and optionally configures its pipeline middlewares.
     /// </summary>
     /// <param name="actorType">The type of the actor to register. Must implement <see cref="IActor"/>.</param>
+    /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="actorType"/> does not implement <see cref="IActor"/>.</exception>
     public ActorSystemConfigurator AddActor(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-            Type actorType
+            Type actorType,
+        Action<ActorConfigurator>? configure = null
     )
     {
         if (!actorType.IsActor())
@@ -128,31 +134,37 @@ public class ActorSystemConfigurator
         }
 
         _serviceCollection.TryAddTransient(actorType);
+        configure?.Invoke(new ActorConfigurator(_serviceCollection, actorType));
         return this;
     }
 
     /// <summary>
-    /// Registers a supervisor type with the dependency injection container as a transient service.
+    /// Registers a supervisor type with the dependency injection container as a transient service
+    /// and optionally configures its pipeline middlewares.
     /// </summary>
     /// <typeparam name="TSupervisor">The type of the supervisor to register.</typeparam>
+    /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator AddSupervisor<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSupervisor
-    >()
+    >(Action<ActorConfigurator>? configure = null)
         where TSupervisor : class, ISupervisor
     {
-        return AddActor<TSupervisor>();
+        return AddActor<TSupervisor>(configure);
     }
 
     /// <summary>
-    /// Registers a supervisor type with the dependency injection container as a transient service.
+    /// Registers a supervisor type with the dependency injection container as a transient service
+    /// and optionally configures its pipeline middlewares.
     /// </summary>
     /// <param name="supervisorType">The type of the supervisor to register. Must implement <see cref="ISupervisor"/>.</param>
+    /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="supervisorType"/> does not implement <see cref="ISupervisor"/>.</exception>
     public ActorSystemConfigurator AddSupervisor(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-            Type supervisorType
+            Type supervisorType,
+        Action<ActorConfigurator>? configure = null
     )
     {
         if (!supervisorType.IsSupervisor())
@@ -162,7 +174,7 @@ public class ActorSystemConfigurator
             );
         }
 
-        return AddActor(supervisorType);
+        return AddActor(supervisorType, configure);
     }
 
     /// <summary>
@@ -228,7 +240,9 @@ public class ActorSystemConfigurator
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="middleware">The middleware instance to register.</param>
-    public ActorSystemConfigurator AddMiddleware<TMiddleware>(TMiddleware middleware)
+    public ActorSystemConfigurator AddMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(TMiddleware middleware)
         where TMiddleware : class, IMiddleware
     {
         _serviceCollection.TryAddSingleton(middleware);
@@ -241,7 +255,9 @@ public class ActorSystemConfigurator
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="middlewareFactory">The factory delegate to create middleware instances.</param>
     /// <param name="lifetime">The service lifetime for the middleware registration.</param>
-    public ActorSystemConfigurator AddMiddleware<TMiddleware>(
+    public ActorSystemConfigurator AddMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(
         Func<IServiceProvider, TMiddleware> middlewareFactory,
         ServiceLifetime lifetime = ServiceLifetime.Transient
     )
@@ -270,7 +286,8 @@ public class ActorSystemConfigurator
     /// <param name="middlewareType">The middleware type to register.</param>
     /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
-        Type middlewareType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type middlewareType,
         ServiceLifetime lifetime = ServiceLifetime.Transient
     )
     {
@@ -285,7 +302,8 @@ public class ActorSystemConfigurator
     /// <param name="middlewareFactory">The factory delegate to create middleware instances.</param>
     /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
-        Type middlewareType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+            Type middlewareType,
         Func<IServiceProvider, object> middlewareFactory,
         ServiceLifetime lifetime = ServiceLifetime.Transient
     )
@@ -300,7 +318,9 @@ public class ActorSystemConfigurator
     /// Adds a global middleware of type <typeparamref name="TMiddleware"/> to the pipeline with default order and no metadata.
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
-    public ActorSystemConfigurator Use<TMiddleware>()
+    public ActorSystemConfigurator Use<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >()
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(0, null);
@@ -311,7 +331,9 @@ public class ActorSystemConfigurator
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="order">The execution order; lower values execute first.</param>
-    public ActorSystemConfigurator Use<TMiddleware>(int order)
+    public ActorSystemConfigurator Use<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(int order)
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(order, null);
@@ -322,69 +344,34 @@ public class ActorSystemConfigurator
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorSystemConfigurator Use<TMiddleware>(object? metadata)
+    public ActorSystemConfigurator Use<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(object? metadata)
         where TMiddleware : class, IMiddleware
     {
         return Use<TMiddleware>(0, metadata);
     }
 
     /// <summary>
-    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> with the specified order and metadata.
+    /// Adds a global middleware of type <typeparamref name="TMiddleware"/> with the specified order and metadata,
+    /// and registers it in the DI container as transient.
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorSystemConfigurator Use<TMiddleware>(int order, object? metadata)
+    public ActorSystemConfigurator Use<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(int order, object? metadata)
         where TMiddleware : class, IMiddleware
     {
-        return Use(typeof(TMiddleware), order, metadata);
-    }
-
-    /// <summary>
-    /// Adds a global middleware by type with default order and no metadata.
-    /// </summary>
-    /// <param name="middlewareType">The middleware type to add.</param>
-    public ActorSystemConfigurator Use(Type middlewareType)
-    {
-        return Use(middlewareType, 0, null);
-    }
-
-    /// <summary>
-    /// Adds a global middleware by type with the specified execution order.
-    /// </summary>
-    /// <param name="middlewareType">The middleware type to add.</param>
-    /// <param name="order">The execution order; lower values execute first.</param>
-    public ActorSystemConfigurator Use(Type middlewareType, int order)
-    {
-        return Use(middlewareType, order, null);
-    }
-
-    /// <summary>
-    /// Adds a global middleware by type with the specified metadata.
-    /// </summary>
-    /// <param name="middlewareType">The middleware type to add.</param>
-    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorSystemConfigurator Use(Type middlewareType, object? metadata)
-    {
-        return Use(middlewareType, 0, metadata);
-    }
-
-    /// <summary>
-    /// Adds a global middleware by type with the specified order and metadata, and registers it in the DI container.
-    /// </summary>
-    /// <param name="middlewareType">The middleware type to add.</param>
-    /// <param name="order">The execution order; lower values execute first.</param>
-    /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorSystemConfigurator Use(Type middlewareType, int order, object? metadata)
-    {
-        _serviceCollection.TryAddTransient(middlewareType);
+        _serviceCollection.TryAddTransient<TMiddleware>();
         _serviceCollection.Configure<PipelineOptions>(opt =>
             opt.Middlewares.Add(
                 new PipelineMiddlewareConfiguration
                 {
                     Order = order,
                     Metadata = metadata,
-                    MiddlewareType = middlewareType,
+                    MiddlewareType = typeof(TMiddleware),
                 }
             )
         );

@@ -14,9 +14,8 @@ namespace Trupe.Pipelines;
 /// <summary>
 /// Base class for pipeline factories that resolves middleware types for a given actor and message type.
 /// </summary>
-/// <param name="provider">The service provider used to resolve middleware instances.</param>
 /// <param name="lookup">The pipeline lookup used to resolve registered middlewares.</param>
-public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipelineLookup lookup)
+public abstract class AbstractPipelineFactory(IPipelineLookup lookup)
 {
     /// <summary>
     /// Gets the middleware scope that this factory targets (send or receive).
@@ -29,7 +28,10 @@ public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipeli
     /// <param name="actorType">The type of the actor processing the message.</param>
     /// <param name="messageType">The type of the message being processed.</param>
     /// <returns>An immutable list of middleware types, ordered by priority.</returns>
-    protected ImmutableList<Type> GetMiddlewareTypes(Type actorType, Type messageType)
+    protected ImmutableList<Type> GetMiddlewareTypes(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+        Type messageType
+    )
     {
         var middlewareAttributes = actorType
             .GetCustomAttributes<MiddlewareAttribute>(true)
@@ -54,7 +56,9 @@ public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipeli
             .ToImmutableList();
     }
 
-    private static IEnumerable<MiddlewareAttribute> GetHandleMessage(Type actorType)
+    private static IEnumerable<MiddlewareAttribute> GetHandleMessage(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType
+    )
     {
         var method = actorType.GetMethod(
             nameof(IActor.HandleAsync),

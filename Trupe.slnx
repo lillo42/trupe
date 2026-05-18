@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Trupe.Extensions.Hosting.Tests/Trupe.Extensions.Hosting.Tests.csproj" />
     <Project Path="tests/Trupe.Tests/Trupe.Tests.csproj" />
+    <Project Path="tests/Trupe.IntegrationTests/Trupe.IntegrationTests.csproj" />
   </Folder>
 </Solution>

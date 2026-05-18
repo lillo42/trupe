@@ -23,7 +23,11 @@ public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
     /// <param name="messageType">The type of the message being processed.</param>
     /// <param name="scope">The middleware scope to filter by (send or receive).</param>
     /// <returns>A list of metadata objects from matching middlewares, ordered by priority.</returns>
-    protected List<object?> GetMetadata(Type actorType, Type messageType, MiddlewareScope scope)
+    protected List<object?> GetMetadata(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+        Type messageType,
+        MiddlewareScope scope
+    )
     {
         var middlewareAttributes = actorType
             .GetCustomAttributes<MiddlewareAttribute>(true)
@@ -48,7 +52,9 @@ public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
             .ToList();
     }
 
-    private static IEnumerable<MiddlewareAttribute> GetHandleMessage(Type actorType)
+    private static IEnumerable<MiddlewareAttribute> GetHandleMessage(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType
+    )
     {
         var method = actorType.GetMethod(
             nameof(IActor.HandleAsync),
