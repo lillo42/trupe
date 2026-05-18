@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions.Pipelines;
@@ -24,7 +25,9 @@ public class ReceivePipelineFactory(IServiceProvider provider, IPipelineLookup l
     /// <param name="actorType">The type of the actor processing the message.</param>
     /// <param name="messageType">The type of the message being processed.</param>
     /// <returns>A new <see cref="IReceivePipeline"/> with resolved middleware instances.</returns>
-    public IReceivePipeline Create(Type actorType, Type messageType)
+    public IReceivePipeline Create(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+        Type messageType)
     {
         var types = GetMiddlewareTypes(actorType, messageType);
 

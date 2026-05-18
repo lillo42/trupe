@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Trupe.Abstractions.Pipelines;
 
@@ -13,5 +14,7 @@ public interface ISendPipelineFactory
     /// <param name="actorType">The type of the target actor.</param>
     /// <param name="messageType">The type of the message to be sent.</param>
     /// <returns>A configured <see cref="ISendPipeline"/> instance.</returns>
-    ISendPipeline Create(Type actorType, Type messageType);
+    ISendPipeline Create(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+        Type messageType);
 }

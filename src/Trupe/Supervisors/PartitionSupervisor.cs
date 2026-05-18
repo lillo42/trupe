@@ -29,7 +29,7 @@ namespace Trupe.Supervisors;
 /// <param name="logger">The logger for supervisor operations.</param>
 /// <param name="workers">The number of worker actors to create in the partition.</param>
 public abstract partial class PartitionSupervisor<
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] TActor
 >(ILogger logger, int workers)
     : Actor,
         ISupervisor,

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,7 +21,10 @@ namespace Trupe;
 /// <param name="actorType">The type of the actor this reference points to.</param>
 /// <param name="provider">The service provider used to create scoped pipeline instances.</param>
 /// <param name="mailbox">The mailbox used to deliver messages to the actor.</param>
-public class ActorReference(Type actorType, IServiceProvider provider, IMailbox mailbox)
+public class ActorReference(
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+    IServiceProvider provider,
+    IMailbox mailbox)
     : IActorReference
 {
     /// <inheritdoc />

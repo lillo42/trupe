@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Trupe.Abstractions.Messages;
 
@@ -20,7 +21,7 @@ public interface ISendPipelineContextFactory
     /// <returns>A new <see cref="ISendPipelineContext"/> instance.</returns>
     ISendPipelineContext Create(
         IActorReference reference,
-        Type actorType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
         IMessage message,
         object?[] metadata,
         CancellationToken cancellationToken

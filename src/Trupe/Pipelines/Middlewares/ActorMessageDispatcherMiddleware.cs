@@ -27,6 +27,11 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
     /// </summary>
     /// <param name="context">The receive pipeline context containing the actor, message, and metadata.</param>
     /// <param name="next">The delegate to invoke the next middleware in the pipeline.</param>
+    [UnconditionalSuppressMessage(
+        "Aot",
+        "IL3050:RequiresDynamicCode",
+        Justification = "CreateCallHandleDelegate is only reachable when RuntimeFeature.IsDynamicCodeSupported is true."
+    )]
     public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
     {
         var cancellationToken = context.CancellationToken;

@@ -75,7 +75,7 @@ public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
         Justification = "The unfriendly method is not reachable with AOT"
     )]
     private static IEnumerable<MiddlewareAttribute> GetHandleMessageTyped(
-        Type actorType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
         Type messageType
     )
     {

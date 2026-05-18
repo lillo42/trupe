@@ -12,7 +12,7 @@ public interface IChildSpecification
     /// <summary>
     /// Gets the type of the actor to be created.
     /// </summary>
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
     Type ActorType { get; }
 
     /// <summary>

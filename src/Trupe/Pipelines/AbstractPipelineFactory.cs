@@ -14,8 +14,9 @@ namespace Trupe.Pipelines;
 /// <summary>
 /// Base class for pipeline factories that resolves middleware types for a given actor and message type.
 /// </summary>
+/// <param name="provider">The service provider used to resolve middleware instances.</param>
 /// <param name="lookup">The pipeline lookup used to resolve registered middlewares.</param>
-public abstract class AbstractPipelineFactory(IPipelineLookup lookup)
+public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipelineLookup lookup)
 {
     /// <summary>
     /// Gets the middleware scope that this factory targets (send or receive).
@@ -79,7 +80,7 @@ public abstract class AbstractPipelineFactory(IPipelineLookup lookup)
         Justification = "The unfriendly method is not reachable with AOT"
     )]
     private static IEnumerable<MiddlewareAttribute> GetHandleMessageTyped(
-        Type actorType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
         Type messageType
     )
     {

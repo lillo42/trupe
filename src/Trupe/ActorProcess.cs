@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -223,6 +224,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// This method handles system messages (<see cref="InitializeActor"/>, <see cref="AfterRestartActor"/>),
     /// typed message dispatch, and response handling for ask-pattern messages.
     /// </remarks>
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method",
+        Justification = "Actor types are registered at startup and preserved by DI container registration."
+    )]
     private async ValueTask<bool> ProcessAsync(
         IActor actor,
         IMessage message,

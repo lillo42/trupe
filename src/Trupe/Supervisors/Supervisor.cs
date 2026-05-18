@@ -37,7 +37,6 @@ namespace Trupe.Supervisors;
 /// </list>
 /// </para>
 /// </remarks>
-/// <param name="actorFactory">Factory used to create actor instances.</param>
 /// <param name="logger">Logger for supervisor operations.</param>
 public abstract partial class Supervisor(ILogger logger)
     : Actor,
@@ -234,7 +233,11 @@ public abstract partial class Supervisor(ILogger logger)
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual IActorReference AddChild<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TActor
     >()
         where TActor : IActor
     {
@@ -250,7 +253,10 @@ public abstract partial class Supervisor(ILogger logger)
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual IActorReference AddChild(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type actorType
     )
     {
@@ -294,7 +300,11 @@ public abstract partial class Supervisor(ILogger logger)
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual ValueTask<IActorReference> AddChildAsync<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
     {
@@ -311,7 +321,10 @@ public abstract partial class Supervisor(ILogger logger)
     /// Thrown if called after the supervisor has been initialized.
     /// </exception>
     protected virtual ValueTask<IActorReference> AddChildAsync(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type actorType,
         CancellationToken cancellationToken = default
     )

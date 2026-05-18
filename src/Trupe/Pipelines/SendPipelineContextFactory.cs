@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Trupe.Abstractions;
@@ -28,7 +29,7 @@ public class SendPipelineContextFactory(IServiceProvider serviceProvider, IPipel
     /// <returns>A new <see cref="ISendPipelineContext"/> instance.</returns>
     public ISendPipelineContext Create(
         IActorReference reference,
-        Type actorType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
         IMessage message,
         object?[] metadata,
         CancellationToken cancellationToken

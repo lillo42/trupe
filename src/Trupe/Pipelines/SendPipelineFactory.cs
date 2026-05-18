@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions.Pipelines;
@@ -24,7 +25,9 @@ public class SendPipelineFactory(IServiceProvider provider, IPipelineLookup look
     /// <param name="actorType">The type of the target actor.</param>
     /// <param name="messageType">The type of the message being sent.</param>
     /// <returns>A new <see cref="ISendPipeline"/> with resolved middleware instances.</returns>
-    public ISendPipeline Create(Type actorType, Type messageType)
+    public ISendPipeline Create(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+        Type messageType)
     {
         var types = GetMiddlewareTypes(actorType, messageType);
 

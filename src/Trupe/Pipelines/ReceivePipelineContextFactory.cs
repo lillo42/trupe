@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Trupe.Abstractions;
@@ -26,6 +27,11 @@ public class ReceivePipelineContextFactory(IServiceProvider serviceProvider, IPi
     /// <param name="metadata">Additional metadata objects to include in the pipeline context.</param>
     /// <param name="cancellationToken">The cancellation token for this pipeline execution.</param>
     /// <returns>A new <see cref="IReceivePipelineContext"/> instance.</returns>
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method",
+        Justification = "Actor types are registered at startup and preserved by DI container registration."
+    )]
     public IReceivePipelineContext Create(
         IActor actor,
         IActorContext actorContext,
