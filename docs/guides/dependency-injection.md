@@ -30,8 +30,12 @@ The `ActorSystemConfigurator` provides the full configuration API:
 
 | Method | Description |
 |--------|-------------|
-| `AddActor<TActor>()` | Registers an actor type with the DI container. |
-| `AddSupervisor<TSupervisor>()` | Registers a supervisor type with the DI container. |
+| `AddActor<TActor>(configure?)` | Registers an actor type with the DI container and optionally configures per-actor middlewares. |
+| `AddActor(Type, configure?)` | Non-generic variant for runtime type registration. |
+| `AddSupervisor<TSupervisor>(configure?)` | Registers a supervisor type with the DI container and optionally configures per-actor middlewares. |
+| `AddSupervisor(Type, configure?)` | Non-generic variant for runtime type registration. |
+| `Use<TMiddleware>(order?, metadata?)` | Adds a global pipeline middleware applied to all actors. |
+| `AddMiddleware<TMiddleware>(...)` | Registers a middleware in DI (instance, factory, or type). |
 | `ConfigureRootSupervisor(Action<RootSupervisorOptions>)` | Configures options for the root supervisor. |
 | `SetRootSupervisor<TSupervisor>()` | Replaces the default root supervisor with a custom one. |
 | `SetActorRegister(IActorRegister)` | Replaces the default actor registry. |
@@ -97,7 +101,7 @@ public class OrderActor : Actor, IHandleActorMessage<PlaceOrder>
 
 ## Supervisor Constructor Injection
 
-Supervisors require `IActorFactory` and `ILogger` in their constructor, plus any additional dependencies you need:
+Supervisors require `ILogger` in their constructor, plus any additional dependencies you need:
 
 ```csharp
 public class DataPipelineSupervisor : Supervisor
@@ -105,10 +109,9 @@ public class DataPipelineSupervisor : Supervisor
     private readonly IConfiguration _config;
 
     public DataPipelineSupervisor(
-        IActorFactory actorFactory,
         ILogger<DataPipelineSupervisor> logger,
         IConfiguration config)
-        : base(actorFactory, logger)
+        : base(logger)
     {
         _config = config;
     }
@@ -180,5 +183,6 @@ if (register.TryGet("greeter", out var greeterRef))
 
 ## Next Steps
 
+- [Pipelines and Middleware](pipelines.md) — configure send/receive pipeline middlewares.
 - [Hosting Integration](hosting-integration.md) — automatically manage the actor system lifecycle.
 - [Getting Started](getting-started.md) — build a complete application.
