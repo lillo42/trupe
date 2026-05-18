@@ -10,12 +10,10 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors.Commands;
@@ -31,8 +29,8 @@ namespace Trupe.Supervisors;
 /// <param name="logger">The logger for supervisor operations.</param>
 /// <param name="workers">The number of worker actors to create in the partition.</param>
 public abstract partial class PartitionSupervisor<
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
->(IActorFactory actorFactory, ILogger logger, int workers)
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] TActor
+>(ILogger logger, int workers)
     : Actor,
         ISupervisor,
         IHandleActorMessage<ActorFailed>,
@@ -42,7 +40,8 @@ public abstract partial class PartitionSupervisor<
     /// <summary>
     /// Gets the factory used to create child actors.
     /// </summary>
-    protected virtual IActorFactory ActorFactory { get; } = actorFactory;
+    protected virtual IActorFactory ActorFactory =>
+        Context.ServiceProvider.GetRequiredService<IActorFactory>();
 
     /// <summary>
     /// Gets the logger for supervisor operations.
@@ -95,10 +94,9 @@ public abstract partial class PartitionSupervisor<
     /// Initializes a new instance of the <see cref="PartitionSupervisor{TActor}"/> class
     /// with the default number of workers equal to the processor count.
     /// </summary>
-    /// <param name="actorFactory">The factory used to create child actors.</param>
     /// <param name="logger">The logger for supervisor operations.</param>
-    public PartitionSupervisor(IActorFactory actorFactory, ILogger logger)
-        : this(actorFactory, logger, Environment.ProcessorCount) { }
+    public PartitionSupervisor(ILogger logger)
+        : this(logger, Environment.ProcessorCount) { }
 
     /// <summary>
     /// Initializes the supervisor by creating and starting all worker actors.
@@ -109,7 +107,7 @@ public abstract partial class PartitionSupervisor<
     {
         for (var i = 0; i < Workers; i++)
         {
-            CreateActor(
+            await CreateActorAsync(
                 new ChildSpecification(typeof(TActor))
                 {
                     RestartPolicy = DefaultRestartPolicy,
@@ -133,10 +131,9 @@ public abstract partial class PartitionSupervisor<
         foreach (var metadata in Children)
         {
             await StopActorAsync(metadata);
-
             await DisposeObjectAsync(metadata.Actor);
+            await DisposeObjectAsync(metadata.Actor.Context);
 
-            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
             metadata.Process = null!;
             metadata.Metadata.Clear();
@@ -229,16 +226,15 @@ public abstract partial class PartitionSupervisor<
         {
             await StopActorAsync(metadata);
             await DisposeObjectAsync(metadata.Actor);
+            await DisposeObjectAsync(metadata.Actor.Context);
 
             await metadata.Process.DisposeAsync();
 
-            await metadata.Actor.Context.DisposeAsync();
             metadata.Actor = null!;
             metadata.Process = null!;
             metadata.Metadata.Clear();
         }
 
-        await Context.DisposeAsync();
         Children = [];
     }
 
@@ -368,7 +364,7 @@ public abstract partial class PartitionSupervisor<
     /// <returns>The metadata for the created child actor.</returns>
     /// <exception cref="SupervisorAlreadyInitializedException">Thrown if the supervisor has already been initialized.</exception>
     /// <exception cref="TooManyWorkerException">Thrown if the maximum number of workers has been reached.</exception>
-    protected virtual Child CreateActor(ChildSpecification specification)
+    protected virtual async Task<Child> CreateActorAsync(ChildSpecification specification)
     {
         if (_initialized)
         {
@@ -384,13 +380,17 @@ public abstract partial class PartitionSupervisor<
             );
         }
 
-        var reference = new LocalActorReference(specification.Mailbox);
+        var reference = new ActorReference(
+            specification.ActorType,
+            Context.ServiceProvider,
+            specification.Mailbox
+        );
         var actor = ActorFactory.CreateActor(typeof(TActor));
         actor.Context = new ActorContext(reference, Context.ServiceProvider.CreateAsyncScope());
 
         var process = new ActorProcess(actor, specification.Mailbox);
-        process.Failure += HandleFailure;
-        process.Terminate += HandleTermination;
+        process.Failed += HandleFailure;
+        process.Terminated += HandleTermination;
 
         var child = new Child(
             actor,
@@ -402,7 +402,7 @@ public abstract partial class PartitionSupervisor<
         );
         Children = Children.Add(child);
 
-        process.Start(new LocalTellMessage(new InitializeActor()));
+        await process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         return child;
     }
@@ -459,7 +459,7 @@ public abstract partial class PartitionSupervisor<
         var now = DateTimeOffset.UtcNow;
         if ((now - metadata.LastRestartTime) > RestartWindow)
         {
-            PartitionLog.ResetingActorCounter(Logger, metadata.ActorType);
+            PartitionLog.ResettingActorCounter(Logger, metadata.ActorType);
             metadata.RestartCount = 0;
         }
     }
@@ -506,8 +506,8 @@ public abstract partial class PartitionSupervisor<
     {
         PartitionLog.StoppingActor(Logger);
 
-        metadata.Process.Failure -= HandleFailure;
-        metadata.Process.Terminate -= HandleTermination;
+        metadata.Process.Failed -= HandleFailure;
+        metadata.Process.Terminated -= HandleTermination;
         await metadata.Process.StopAsync();
 
         PartitionLog.ActorStopped(Logger);
@@ -523,7 +523,7 @@ public abstract partial class PartitionSupervisor<
         PartitionLog.ResumingActor(Logger);
 
         await metadata.Process.StopAsync();
-        metadata.Process.Start();
+        await metadata.Process.StartAsync();
 
         PartitionLog.ActorResumed(Logger);
     }
@@ -542,7 +542,7 @@ public abstract partial class PartitionSupervisor<
         Exception exception
     )
     {
-        PartitionLog.ScalatingError(Logger);
+        PartitionLog.EscalatingError(Logger);
 
         await metadata.Process.StopAsync();
         throw new EscalateFailureException(
@@ -580,29 +580,33 @@ public abstract partial class PartitionSupervisor<
     /// <returns>A task representing the reset operation.</returns>
     protected virtual async Task ResetActorAsync(Child child)
     {
-        PartitionLog.ResetingActor(Logger);
+        PartitionLog.ResettingActor(Logger);
 
         await StopActorAsync(child);
         await BeforeRestartActorAsync(child);
 
         await DisposeObjectAsync(child.Actor);
+        await DisposeObjectAsync(child.Actor.Context);
 
         await ResetMailboxAsync(child);
 
         PartitionLog.CreatingNewActorInstance(Logger);
         child.Actor = ActorFactory.CreateActor(child.ActorType);
-        child.Actor.Context = new ActorContext(child.Reference, Context.ServiceProvider.CreateAsyncScope());
-        PartitionLog.ActoCreateWithSuccess(Logger);
+        child.Actor.Context = new ActorContext(
+            child.Reference,
+            Context.ServiceProvider.CreateAsyncScope()
+        );
+        PartitionLog.ActorCreatedWithSuccess(Logger);
 
         await child.Process.DisposeAsync();
         PartitionLog.CreateNewProcess(Logger);
         child.Process = new ActorProcess(child.Actor, child.Mailbox);
-        child.Process.Failure += HandleFailure;
-        child.Process.Terminate += HandleTermination;
+        child.Process.Failed += HandleFailure;
+        child.Process.Terminated += HandleTermination;
 
-        child.Process.Start(
-            new LocalTellMessage(new InitializeActor()),
-            new LocalTellMessage(new AfterRestartActor())
+        await child.Process.StartAsync(
+            new TellMessage(new InitializeActor(), []),
+            new TellMessage(new AfterRestartActor(), [])
         );
 
         PartitionLog.ActorProcessStarted(Logger);
@@ -693,7 +697,7 @@ internal static partial class PartitionLog
     public static partial void ActorResumed(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Resetting actor state for restart")]
-    public static partial void ResetingActor(ILogger logger);
+    public static partial void ResettingActor(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Actor restarted successfully")]
     public static partial void ActorRestarted(ILogger logger);
@@ -723,7 +727,7 @@ internal static partial class PartitionLog
     public static partial void CreatingNewActorInstance(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Actor instance created successfully")]
-    public static partial void ActoCreateWithSuccess(ILogger logger);
+    public static partial void ActorCreatedWithSuccess(ILogger logger);
 
     [LoggerMessage(
         Level = LogLevel.Trace,
@@ -738,13 +742,13 @@ internal static partial class PartitionLog
     public static partial void ActorProcessStarted(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "Escalating failure to parent supervisor")]
-    public static partial void ScalatingError(ILogger logger);
+    public static partial void EscalatingError(ILogger logger);
 
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "Resetting restart counter for actor type {ActorType} after restart window elapsed"
     )]
-    public static partial void ResetingActorCounter(ILogger logger, Type actorType);
+    public static partial void ResettingActorCounter(ILogger logger, Type actorType);
 
     [LoggerMessage(
         Level = LogLevel.Trace,

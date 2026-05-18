@@ -41,8 +41,8 @@ When a child actor fails, **only that specific child** is affected by the failur
 ```csharp
 public class IndependentWorkersSupervisor : Supervisor
 {
-    public IndependentWorkersSupervisor(IActorFactory actorFactory, ILogger<IndependentWorkersSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public IndependentWorkersSupervisor(ILogger<IndependentWorkersSupervisor> logger)
+        : base(logger) { }
 
     protected override Strategy Strategy => Strategy.OneForOne;
 
@@ -97,8 +97,8 @@ When a child actor fails, **all children** of the supervisor are affected by the
 ```csharp
 public class PipelineSupervisor : Supervisor
 {
-    public PipelineSupervisor(IActorFactory actorFactory, ILogger<PipelineSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public PipelineSupervisor(ILogger<PipelineSupervisor> logger)
+        : base(logger) { }
 
     protected override Strategy Strategy => Strategy.AllForOne;
 
@@ -131,8 +131,8 @@ The strategy determines _which actors_ are affected. The failure action determin
 ```csharp
 public class MySupervisor : Supervisor
 {
-    public MySupervisor(IActorFactory actorFactory, ILogger<MySupervisor> logger)
-        : base(actorFactory, logger) { }
+    public MySupervisor(ILogger<MySupervisor> logger)
+        : base(logger) { }
 
     protected override Strategy Strategy => Strategy.AllForOne;
     protected override int MaxRestarts => 5;

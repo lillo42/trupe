@@ -2,7 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.ActorReferences;
+using Trupe.Extensions;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 
@@ -49,24 +49,35 @@ public class ActorProcessTest
         }
     }
 
+    private static ServiceProvider BuildServiceProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddTrupe(c => { });
+        return services.BuildServiceProvider();
+    }
+
     [Test]
     [SkipOnNativeAot]
     public async Task ProcessTellMessageWithTypedActor_Should_MarkMessageAsProcessed()
     {
         // Arrange
         var mailbox = new ChannelMailbox();
+        var serviceProvider = BuildServiceProvider();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new ActorReference(typeof(SimpleTypedActor), serviceProvider, mailbox),
+                serviceProvider.CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(message), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(message, []), CancellationToken.None);
 
         // Allow some time for the message to be processed
         await Task.Delay(100);
@@ -85,18 +96,22 @@ public class ActorProcessTest
     {
         // Arrange
         var mailbox = new ChannelMailbox();
+        var serviceProvider = BuildServiceProvider();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new ActorReference(typeof(SimpleTypedActor), serviceProvider, mailbox),
+                serviceProvider.CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        var askMessage = new LocalAskMessage(message, cancellationToken);
+        var askMessage = new AskMessage(message, [], cancellationToken);
         await mailbox.EnqueueAsync(askMessage, cancellationToken);
 
         // Allow some time for the message to be processed
@@ -116,18 +131,22 @@ public class ActorProcessTest
     {
         // Arrange
         var mailbox = new ChannelMailbox();
+        var serviceProvider = BuildServiceProvider();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new ActorReference(typeof(SimpleUntypedActor), serviceProvider, mailbox),
+                serviceProvider.CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        await mailbox.EnqueueAsync(new LocalTellMessage(message), CancellationToken.None);
+        await mailbox.EnqueueAsync(new TellMessage(message, []), CancellationToken.None);
 
         // Allow some time for the message to be processed
         await Task.Delay(100);
@@ -145,18 +164,22 @@ public class ActorProcessTest
     {
         // Arrange
         var mailbox = new ChannelMailbox();
+        var serviceProvider = BuildServiceProvider();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope()),
+            Context = new ActorContext(
+                new ActorReference(typeof(SimpleUntypedActor), serviceProvider, mailbox),
+                serviceProvider.CreateScope()
+            ),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
-        actorProcess.Start();
+        await actorProcess.StartAsync();
 
         var message = new SimpleMessage("Hello, Actor!");
 
         // Act
-        var askMessage = new LocalAskMessage(message, cancellationToken);
+        var askMessage = new AskMessage(message, [], cancellationToken);
         await mailbox.EnqueueAsync(askMessage, cancellationToken);
 
         // Allow some time for the message to be processed

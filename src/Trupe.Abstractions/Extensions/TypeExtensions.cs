@@ -1,12 +1,12 @@
 using System;
-using Trupe.Abstractions;
+using Trupe.Abstractions.Pipelines;
 
-namespace Trupe.Extensions;
+namespace Trupe.Abstractions.Extensions;
 
 /// <summary>
 /// Internal extension methods for <see cref="Type"/> to check actor and supervisor assignability.
 /// </summary>
-internal static class TypeExtensions
+public static class TypeExtensions
 {
     /// <summary>
     /// Determines whether the specified type implements <see cref="IActor"/>.
@@ -36,5 +36,25 @@ internal static class TypeExtensions
     public static bool IsRootSupervisor(this Type type)
     {
         return typeof(IRootSupervisor).IsAssignableFrom(type);
+    }
+
+    /// <summary>
+    /// Determines whether the specified type implements <see cref="IReceiveMiddleware"/>.
+    /// </summary>
+    /// <param name="type">The type to check.</param>
+    /// <returns><c>true</c> if the type implements <see cref="IReceiveMiddleware"/>; otherwise, <c>false</c>.</returns>
+    public static bool IsReceiveMiddleware(this Type type)
+    {
+        return typeof(IReceiveMiddleware).IsAssignableFrom(type);
+    }
+
+    /// <summary>
+    /// Determines whether the specified type implements <see cref="ISendMiddleware"/>.
+    /// </summary>
+    /// <param name="type">The type to check.</param>
+    /// <returns><c>true</c> if the type implements <see cref="ISendMiddleware"/>; otherwise, <c>false</c>.</returns>
+    public static bool IsSendMiddleware(this Type type)
+    {
+        return typeof(ISendMiddleware).IsAssignableFrom(type);
     }
 }

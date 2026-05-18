@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Trupe.Abstractions;
 
@@ -9,7 +10,7 @@ namespace Trupe.Abstractions;
 /// This context is injected into the actor's message handling logic. It provides access to the actor's
 /// own identity and a mechanism to return data to the caller when the Request-Response (<c>Ask</c>) pattern is used.
 /// </remarks>
-public interface IActorContext : IAsyncDisposable
+public interface IActorContext
 {
     /// <summary>
     /// Gets the reference to the current actor instance.
@@ -28,15 +29,17 @@ public interface IActorContext : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// If the current message was sent via <see cref="IActorReference.Ask{TResponse}"/>,
+    /// If the current message was sent via <see cref="IActorReference.Ask{TResponse}(object, TimeSpan?)"/>,
     /// setting this property will result in the sender's awaited task completing with this value.
     /// </para>
     /// <para>
-    /// If the message was sent via <see cref="IActorReference.Tell{TMessage}"/> (Fire-and-Forget),
+    /// If the message was sent via <see cref="IActorReference.Tell(object, TimeSpan?)"/> (Fire-and-Forget),
     /// setting this property usually has no effect, as there is no receiver waiting for a result.
     /// </para>
     /// </remarks>
     object? Response { get; set; }
+
+    Dictionary<string, object?> Metadata { get; }
 
     /// <summary>
     /// Gets the <see cref="IServiceProvider"/> scoped to the current message being processed.

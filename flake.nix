@@ -26,7 +26,7 @@
             dotnetSdk
 
             pkgs.netcoredbg # Debugger for .NET Core
-            pkgs.roslyn-ls # LSP for VS Code / Emacs / Vim
+            # pkgs.roslyn-ls # LSP for VS Code / Emacs / Vim
           ];
         };
 

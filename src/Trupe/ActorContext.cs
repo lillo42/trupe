@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
@@ -20,10 +21,25 @@ namespace Trupe;
 /// </remarks>
 /// <param name="self">The reference to the actor this context belongs to.</param>
 /// <param name="scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
-public record ActorContext(IActorReference self, IServiceScope scope) : IActorContext
+public record ActorContext(IActorReference Self, IServiceScope Scope)
+    : IActorContext,
+        IAsyncDisposable
 {
-    /// <inheritdoc />
-    public IActorReference Self { get; } = self;
+    /// <summary>
+    /// Initializes a new <see cref="ActorContext"/> with pre-existing metadata entries.
+    /// </summary>
+    /// <param name="self">The reference to the actor this context belongs to.</param>
+    /// <param name="metadata">Initial metadata key-value pairs to copy into this context.</param>
+    /// <param name="scope">The DI scope associated with this context.</param>
+    public ActorContext(
+        IActorReference self,
+        Dictionary<string, object?> metadata,
+        IServiceScope scope
+    )
+        : this(self, scope)
+    {
+        Metadata = new Dictionary<string, object?>(metadata);
+    }
 
     /// <summary>
     /// Gets or sets the response object to be returned to the sender of the current message.
@@ -35,19 +51,28 @@ public record ActorContext(IActorReference self, IServiceScope scope) : IActorCo
     /// </remarks>
     public object? Response { get; set; }
 
-    /// <inheritdoc />
-    public IServiceProvider ServiceProvider => scope.ServiceProvider;
+    /// <summary>
+    /// Gets the actor-scoped metadata dictionary.
+    /// </summary>
+    public Dictionary<string, object?> Metadata { get; } = [];
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Gets the scoped service provider derived from the associated <see cref="Scope"/>.
+    /// </summary>
+    public IServiceProvider ServiceProvider { get; } = Scope.ServiceProvider;
+
+    /// <summary>
+    /// Asynchronously disposes the associated DI scope.
+    /// </summary>
     public ValueTask DisposeAsync()
     {
-        if (scope is IAsyncDisposable asyncDisposable)
+        if (Scope is IAsyncDisposable asyncDisposable)
         {
             return asyncDisposable.DisposeAsync();
         }
         else
         {
-            scope.Dispose();
+            Scope.Dispose();
             return new ValueTask();
         }
     }

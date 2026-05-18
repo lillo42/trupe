@@ -48,4 +48,10 @@ public class ActorRegister : IActorRegister
     {
         return _actors.ContainsKey(id);
     }
+
+    /// <inheritdoc />
+    public void Unregister(string id)
+    {
+        _actors.TryRemove(id, out _);
+    }
 }

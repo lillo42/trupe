@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using Trupe;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Supervisors;
-using Trupe.ActorReferences;
+using Trupe.Extensions;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors;
@@ -18,13 +18,21 @@ namespace Trupe.Tests.Supervisors;
 
 public class DynamicSupervisorTest
 {
+    private static IServiceProvider BuildServiceProvider(IActorFactory? factory = null)
+    {
+        var services = new ServiceCollection();
+        services.AddTrupe(c => { });
+        factory ??= Substitute.For<IActorFactory>();
+        services.AddSingleton(factory);
+        return services.BuildServiceProvider();
+    }
+
     #region Test Helpers
 
     private class TestDynamicSupervisor(
-        IActorFactory actorFactory,
         ILogger logger,
         Func<CancellationToken, ValueTask>? onInitialize = null
-    ) : DynamicSupervisor(actorFactory, logger)
+    ) : DynamicSupervisor(logger)
     {
         private readonly Func<CancellationToken, ValueTask>? _onInitialize = onInitialize;
 
@@ -60,10 +68,8 @@ public class DynamicSupervisorTest
             CancellationToken cancellationToken = default
         ) => base.AddChildAsync(actorType, cancellationToken);
 
-        public new Child CreateActor(
-            IChildSpecification specification,
-            LocalActorReference reference
-        ) => base.CreateActor(specification, reference);
+        public new async Task<Child> CreateActorAsync(IChildSpecification specification, ActorReference reference) =>
+            await base.CreateActorAsync(specification, reference);
 
         public new void RemoveActor(IActorReference reference) => base.RemoveActor(reference);
 
@@ -103,9 +109,13 @@ public class DynamicSupervisorTest
     {
         factory ??= Substitute.For<IActorFactory>();
         var logger = Substitute.For<ILogger>();
-        var supervisor = new TestDynamicSupervisor(factory, logger, onInitialize);
+        var supervisor = new TestDynamicSupervisor(logger, onInitialize);
         selfMailbox ??= new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(selfMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        var sp = BuildServiceProvider(factory);
+        supervisor.Context = new ActorContext(
+            new ActorReference(typeof(TestDynamicSupervisor), sp, selfMailbox),
+            sp.CreateScope()
+        );
         return supervisor;
     }
 
@@ -142,8 +152,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<DisposableActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(DisposableActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox },
             reference
         );
@@ -168,8 +178,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<SimpleActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -193,9 +203,9 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<SimpleActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
-            new LocalActorReference(mailbox)
+            new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox)
         );
 
         // Act — remove an actor that's not a child
@@ -221,7 +231,7 @@ public class DynamicSupervisorTest
     #region AddChild Override
 
     [Test]
-    public async Task AddChild_WithSpec_Should_ReturnLocalActorReference()
+    public async Task AddChild_WithSpec_Should_ReturnActorReference()
     {
         // Arrange
         var supervisor = CreateSupervisor();
@@ -232,7 +242,7 @@ public class DynamicSupervisorTest
 
         // Assert
         await Assert.That(actorRef).IsNotNull();
-        await Assert.That(actorRef).IsTypeOf<LocalActorReference>();
+        await Assert.That(actorRef).IsTypeOf<ActorReference>();
     }
 
     [Test]
@@ -248,13 +258,10 @@ public class DynamicSupervisorTest
 
         // Assert — verify AddActor message was enqueued to self
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
-            var addActor = (AddActor)msg.Payload;
-            await Assert.That(addActor.Specification).IsSameReferenceAs(spec);
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<AddActor>();
+        var addActor = (AddActor)msg.Payload;
+        await Assert.That(addActor.Specification).IsSameReferenceAs(spec);
     }
 
     [Test]
@@ -269,13 +276,10 @@ public class DynamicSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
-            var addActor = (AddActor)msg.Payload;
-            await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<AddActor>();
+        var addActor = (AddActor)msg.Payload;
+        await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
     }
 
     [Test]
@@ -298,7 +302,7 @@ public class DynamicSupervisorTest
     #region AddChildAsync Override
 
     [Test]
-    public async Task AddChildAsync_WithSpec_Should_ReturnLocalActorReference()
+    public async Task AddChildAsync_WithSpec_Should_ReturnActorReference()
     {
         // Arrange
         var supervisor = CreateSupervisor();
@@ -309,7 +313,7 @@ public class DynamicSupervisorTest
 
         // Assert
         await Assert.That(actorRef).IsNotNull();
-        await Assert.That(actorRef).IsTypeOf<LocalActorReference>();
+        await Assert.That(actorRef).IsTypeOf<ActorReference>();
     }
 
     [Test]
@@ -325,11 +329,8 @@ public class DynamicSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<AddActor>();
     }
 
     [Test]
@@ -344,13 +345,10 @@ public class DynamicSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<AddActor>();
-            var addActor = (AddActor)msg.Payload;
-            await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<AddActor>();
+        var addActor = (AddActor)msg.Payload;
+        await Assert.That(addActor.Specification.ActorType).IsEqualTo(typeof(SimpleActor));
     }
 
     #endregion
@@ -364,8 +362,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<DisposableActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(DisposableActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(DisposableActor))
             {
                 Mailbox = mailbox,
@@ -379,7 +377,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new TellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — removed from children, actor disposed, refs nulled
@@ -397,8 +399,8 @@ public class DynamicSupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -411,7 +413,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new TellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — still in children (restarted by base)
@@ -426,8 +432,8 @@ public class DynamicSupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -440,7 +446,11 @@ public class DynamicSupervisorTest
         // Act
         await supervisor.HandleAsync(
             (object)
-                new ActorFailed(child.Actor, new LocalTellMessage("test"), new Exception("fail"))
+                new ActorFailed(
+                    child.Actor,
+                    new TellMessage("test", []),
+                    new Exception("fail")
+                )
         );
 
         // Assert — still in children (restarted by base)
@@ -458,8 +468,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<DisposableActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(DisposableActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(DisposableActor))
             {
                 Mailbox = mailbox,
@@ -487,8 +497,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<DisposableActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(DisposableActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(DisposableActor))
             {
                 Mailbox = mailbox,
@@ -517,8 +527,8 @@ public class DynamicSupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -547,8 +557,8 @@ public class DynamicSupervisorTest
         var selfMailbox = new ChannelMailbox();
         var supervisor = CreateSupervisor(factory: factory, selfMailbox: selfMailbox);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -559,13 +569,10 @@ public class DynamicSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<RemoveChild>();
-            var removeChild = (RemoveChild)msg.Payload;
-            await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<RemoveChild>();
+        var removeChild = (RemoveChild)msg.Payload;
+        await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
     }
 
     [Test]
@@ -574,7 +581,7 @@ public class DynamicSupervisorTest
         // Arrange
         var selfMailbox = new ChannelMailbox();
         var supervisor = CreateSupervisor(selfMailbox: selfMailbox);
-        var unknownRef = new LocalActorReference(new ChannelMailbox());
+        var unknownRef = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, new ChannelMailbox());
 
         // Act
         supervisor.RemoveActor(unknownRef);
@@ -584,11 +591,9 @@ public class DynamicSupervisorTest
         var messageReceived = false;
         try
         {
-            await foreach (var _ in selfMailbox.WithCancellation(cts.Token))
-            {
+            var msg = await selfMailbox.DequeueAsync(cts.Token);
+            if (msg != null)
                 messageReceived = true;
-                break;
-            }
         }
         catch (OperationCanceledException)
         {
@@ -610,8 +615,8 @@ public class DynamicSupervisorTest
         var selfMailbox = new ChannelMailbox();
         var supervisor = CreateSupervisor(factory: factory, selfMailbox: selfMailbox);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -622,13 +627,10 @@ public class DynamicSupervisorTest
 
         // Assert
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in selfMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<RemoveChild>();
-            var removeChild = (RemoveChild)msg.Payload;
-            await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
-            break;
-        }
+        var msg = await selfMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<RemoveChild>();
+        var removeChild = (RemoveChild)msg.Payload;
+        await Assert.That(removeChild.Actor).IsSameReferenceAs(child.Actor);
     }
 
     [Test]
@@ -636,7 +638,7 @@ public class DynamicSupervisorTest
     {
         // Arrange
         var supervisor = CreateSupervisor();
-        var unknownRef = new LocalActorReference(new ChannelMailbox());
+        var unknownRef = new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, new ChannelMailbox());
 
         // Act & Assert — should complete without throwing
         await supervisor.RemoveActorAsync(unknownRef);
@@ -653,8 +655,8 @@ public class DynamicSupervisorTest
         var factory = CreateFactory<DisposableActor>();
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(DisposableActor), supervisor.Context.ServiceProvider, mailbox);
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox },
             reference
         );
@@ -683,13 +685,13 @@ public class DynamicSupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActorAsync(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), supervisor.Context.ServiceProvider, mailbox2)
         );
 
         var childToRemove = supervisor.Children[0];

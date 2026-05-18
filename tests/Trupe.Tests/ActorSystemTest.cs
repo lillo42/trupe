@@ -14,10 +14,13 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
 
         // Act
-        actorSystem.Start();
+        await actorSystem.StartAsync();
 
         // Assert
         await Assert.That(rootSupervisor.Context).IsNotNull();
@@ -30,11 +33,15 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
-        actorSystem.Start();
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
+
+        await actorSystem.StartAsync();
 
         // Act & Assert
-        var act = () => actorSystem.Start();
+        var act = async () => await actorSystem.StartAsync();
         await Assert.That(act).ThrowsExactly<InvalidOperationException>();
         await actorSystem.StopAsync();
     }
@@ -45,14 +52,18 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
-        actorSystem.Start();
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
+
+        await actorSystem.StartAsync();
 
         // Act
         await actorSystem.StopAsync();
 
         // Assert - Starting again should work since it's stopped
-        actorSystem.Start();
+        await actorSystem.StartAsync();
         await actorSystem.StopAsync();
     }
 
@@ -61,7 +72,10 @@ public class ActorSystemTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
 
         // Act & Assert - should not throw
         await actorSystem.StopAsync();

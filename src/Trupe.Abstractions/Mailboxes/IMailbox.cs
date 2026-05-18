@@ -31,7 +31,7 @@ namespace Trupe.Abstractions.Mailboxes;
 /// The <see cref="IAsyncEnumerable{T}"/> implementation allows the actor's message
 /// loop to efficiently wait for messages without blocking threads.
 /// </remarks>
-public interface IMailbox : IAsyncEnumerable<IMessage>
+public interface IMailbox
 {
     /// <summary>
     /// Asynchronously adds a message to the end of the mailbox queue.
@@ -63,6 +63,8 @@ public interface IMailbox : IAsyncEnumerable<IMessage>
     /// </param>
     /// <returns>A <see cref="ValueTask"/> representing the asynchronous enqueue operation.</returns>
     ValueTask EnqueueAsync(IMessage message, CancellationToken cancellationToken = default);
+
+    ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asynchronously clears all pending messages from the mailbox and resets it to an empty state.

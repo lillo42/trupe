@@ -9,14 +9,13 @@ using NSubstitute;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
-using Trupe.Abstractions.Factories;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
-using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 using Trupe.Supervisors;
+using Trupe.Extensions;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Tests.Supervisors;
@@ -26,13 +25,12 @@ public class SupervisorTest
     #region Test Helpers
 
     private class TestSupervisor(
-        IActorFactory actorFactory,
         ILogger logger,
         Strategy? strategy = null,
         int? maxRestarts = null,
         TimeSpan? restartWindow = null,
         Func<CancellationToken, ValueTask>? onInitialize = null
-    ) : Supervisor(actorFactory, logger)
+    ) : Supervisor(logger)
     {
         private readonly Func<CancellationToken, ValueTask>? _onInitialize = onInitialize;
 
@@ -92,10 +90,10 @@ public class SupervisorTest
 
         public new Task ApplyRestartAsync(Child child) => base.ApplyRestartAsync(child);
 
-        public new Child CreateActor(
+        public Task<Child> CreateActor(
             IChildSpecification specification,
-            LocalActorReference reference
-        ) => base.CreateActor(specification, reference);
+            ActorReference reference
+        ) => base.CreateActorAsync(specification, reference);
 
         public new ValueTask DisposeObjectAsync(object obj) => base.DisposeObjectAsync(obj);
 
@@ -164,7 +162,6 @@ public class SupervisorTest
         factory ??= Substitute.For<IActorFactory>();
         var logger = Substitute.For<ILogger>();
         var supervisor = new TestSupervisor(
-            factory,
             logger,
             strategy,
             maxRestarts,
@@ -173,7 +170,14 @@ public class SupervisorTest
         );
 
         var mailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(mailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        var services = new ServiceCollection();
+        services.AddTrupe(c => { });
+        services.AddSingleton(factory);
+        var sp = services.BuildServiceProvider();
+        supervisor.Context = new ActorContext(
+            new ActorReference(typeof(TestSupervisor), sp, mailbox),
+            sp.CreateScope()
+        );
 
         return supervisor;
     }
@@ -186,8 +190,12 @@ public class SupervisorTest
     {
         actor ??= new SimpleActor();
         mailbox ??= new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        actor.Context = new ActorContext(reference, new ServiceCollection().BuildServiceProvider().CreateScope());
+        var sp = new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider();
+        var reference = new ActorReference(typeof(SimpleActor), sp, mailbox);
+        actor.Context = new ActorContext(
+            reference,
+            sp.CreateScope()
+        );
         var process = new ActorProcess(actor, mailbox);
         return new Child(actor, mailbox, process, reference, restartPolicy, typeof(SimpleActor));
     }
@@ -247,7 +255,7 @@ public class SupervisorTest
         var factory = CreateFactory(childActor);
         var supervisor = CreateSupervisor(factory: factory);
         var spec = new ChildSpecification(typeof(SimpleActor));
-        var reference = new LocalActorReference(new ChannelMailbox());
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
         var message = new AddActor(spec, reference);
 
         // Act
@@ -266,11 +274,11 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var spec = new ChildSpecification(typeof(SimpleActor));
-        var reference = new LocalActorReference(new ChannelMailbox());
-        supervisor.CreateActor(spec, reference);
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
+        await supervisor.CreateActor(spec, reference);
 
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
         var failedMessage = new ActorFailed(
             child.Actor,
             tellMessage,
@@ -293,8 +301,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var spec = new ChildSpecification(typeof(SimpleActor));
-        var reference = new LocalActorReference(new ChannelMailbox());
-        supervisor.CreateActor(spec, reference);
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
+        await supervisor.CreateActor(spec, reference);
 
         var child = supervisor.Children[0];
         var terminatedMessage = new ActorTerminated(child.Actor, "shutdown");
@@ -422,11 +430,11 @@ public class SupervisorTest
         var factory = CreateFactory(childActor);
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
         var spec = new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox };
 
         // Act
-        var child = supervisor.CreateActor(spec, reference);
+        var child = await supervisor.CreateActor(spec, reference);
 
         // Assert
         await Assert.That(supervisor.Children).Count().IsEqualTo(1);
@@ -443,11 +451,11 @@ public class SupervisorTest
         var factory = CreateFactory(childActor);
         var supervisor = CreateSupervisor(factory: factory);
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
         var spec = new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox };
 
         // Act
-        var child = supervisor.CreateActor(spec, reference);
+        var child = await supervisor.CreateActor(spec, reference);
         await Task.Delay(100); // Allow initialization message to be processed
 
         // Assert
@@ -466,13 +474,13 @@ public class SupervisorTest
         // Act
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         // Assert
@@ -494,7 +502,7 @@ public class SupervisorTest
         };
 
         // Act
-        supervisor.CreateActor(spec, new LocalActorReference(mailbox));
+        await supervisor.CreateActor(spec, new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox));
 
         // Assert
         await Assert.That(supervisor.Children[0].RestartPolicy).IsEqualTo(RestartPolicy.Permanent);
@@ -515,7 +523,7 @@ public class SupervisorTest
         };
 
         // Act
-        supervisor.CreateActor(spec, new LocalActorReference(mailbox));
+        await supervisor.CreateActor(spec, new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox));
 
         // Assert
         await Assert.That(supervisor.Children[0].RestartPolicy).IsEqualTo(RestartPolicy.Transient);
@@ -536,7 +544,7 @@ public class SupervisorTest
         };
 
         // Act
-        supervisor.CreateActor(spec, new LocalActorReference(mailbox));
+        await supervisor.CreateActor(spec, new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox));
 
         // Assert
         await Assert.That(supervisor.Children[0].RestartPolicy).IsEqualTo(RestartPolicy.Temporary);
@@ -553,7 +561,7 @@ public class SupervisorTest
         var spec = new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox };
 
         // Act
-        supervisor.CreateActor(spec, new LocalActorReference(mailbox));
+        await supervisor.CreateActor(spec, new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox));
 
         // Assert - ChildSpecification defaults to Permanent
         await Assert.That(supervisor.Children[0].RestartPolicy).IsEqualTo(RestartPolicy.Permanent);
@@ -572,13 +580,13 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -599,16 +607,16 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -628,8 +636,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -638,7 +646,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -658,8 +666,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -668,7 +676,7 @@ public class SupervisorTest
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // Act
         await supervisor.HandleAsync(
@@ -689,13 +697,13 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
         var child = supervisor.Children[0];
-        var askMessage = new LocalAskMessage("test", CancellationToken.None);
+        var askMessage = new AskMessage("test", [], CancellationToken.None);
 
         // Act
         await supervisor.HandleAsync(
@@ -716,14 +724,14 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
         var child = supervisor.Children[0];
-        var nestedAskMessage = new LocalAskMessage("nested", CancellationToken.None);
-        var tellMessage = new LocalTellMessage("test");
+        var nestedAskMessage = new AskMessage("nested", [], CancellationToken.None);
+        var tellMessage = new TellMessage("test", []);
 
         var escalateException = new EscalateFailureException(
             "escalated",
@@ -746,7 +754,7 @@ public class SupervisorTest
         // Arrange
         var supervisor = CreateSupervisor();
         var unknownActor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // Act & Assert - should not throw
         await supervisor.HandleAsync(
@@ -767,13 +775,13 @@ public class SupervisorTest
         );
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
 
         // First failure - restart
         await supervisor.HandleAsync(
@@ -805,8 +813,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -828,8 +836,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -839,7 +847,7 @@ public class SupervisorTest
         );
         var child = supervisor.Children[0];
         var terminateCalled = false;
-        child.Reference.OnTerminate += (_, _) => terminateCalled = true;
+        child.Reference.Terminated += (_, _) => terminateCalled = true;
 
         // Act
         await supervisor.HandleAsync(new ActorTerminated(child.Actor, "done"));
@@ -857,8 +865,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor))
             {
                 Mailbox = mailbox,
@@ -868,7 +876,7 @@ public class SupervisorTest
         );
         var child = supervisor.Children[0];
         var terminateCalled = false;
-        child.Reference.OnTerminate += (_, _) => terminateCalled = true;
+        child.Reference.Terminated += (_, _) => terminateCalled = true;
 
         // Act
         await supervisor.HandleAsync(new ActorTerminated(child.Actor, "done"));
@@ -987,13 +995,13 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         var failedChild = supervisor.Children[0];
@@ -1017,13 +1025,13 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         var failedChild = supervisor.Children[0];
@@ -1045,9 +1053,9 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
-            new LocalActorReference(mailbox)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox)
         );
         var child = supervisor.Children[0];
 
@@ -1067,13 +1075,13 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
         var child = supervisor.Children[0];
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
         var innerException = new InvalidOperationException("inner");
 
         // Act & Assert
@@ -1092,13 +1100,13 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         var child = supervisor.Children[0];
@@ -1124,13 +1132,13 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         var child = supervisor.Children[0];
@@ -1156,8 +1164,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -1182,9 +1190,9 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
-            new LocalActorReference(mailbox)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox)
         );
         var child = supervisor.Children[0];
         var originalActor = (SimpleActor)child.Actor;
@@ -1203,8 +1211,11 @@ public class SupervisorTest
         var supervisor = CreateSupervisor();
         var mailbox = Substitute.For<IMailbox>();
         var supervisorActor = new SimpleSupervisorActor();
-        supervisorActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
-        var reference = new LocalActorReference(new ChannelMailbox());
+        supervisorActor.Context = new ActorContext(
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox()),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
+        );
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
         var process = new ActorProcess(supervisorActor, new ChannelMailbox());
         var child = new Child(
             supervisorActor,
@@ -1229,8 +1240,11 @@ public class SupervisorTest
         var supervisor = CreateSupervisor();
         var mailbox = Substitute.For<IMailbox>();
         var simpleActor = new SimpleActor();
-        simpleActor.Context = new ActorContext(new LocalActorReference(new ChannelMailbox()), new ServiceCollection().BuildServiceProvider().CreateScope());
-        var reference = new LocalActorReference(new ChannelMailbox());
+        simpleActor.Context = new ActorContext(
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox()),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
+        );
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), new ChannelMailbox());
         var process = new ActorProcess(simpleActor, new ChannelMailbox());
         var child = new Child(
             simpleActor,
@@ -1261,9 +1275,9 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
-            new LocalActorReference(mailbox)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox)
         );
         var child = supervisor.Children[0];
         var actorBeforeRestart = (SimpleActor)child.Actor;
@@ -1289,8 +1303,8 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        var reference = new LocalActorReference(mailbox);
-        supervisor.CreateActor(
+        var reference = new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox);
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(SimpleActor)) { Mailbox = mailbox },
             reference
         );
@@ -1313,10 +1327,13 @@ public class SupervisorTest
         factory.CreateActor(Arg.Any<Type>()).Returns(_ => new SimpleActor());
         var supervisor = CreateSupervisor(factory: factory);
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), supervisorMailbox),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
-        var tellMessage = new LocalTellMessage("test");
+        var tellMessage = new TellMessage("test", []);
         var exception = new Exception("fail");
         var args = new ActorFailureEventArgs(actor, tellMessage, exception);
 
@@ -1325,14 +1342,11 @@ public class SupervisorTest
 
         // Assert - message should have been enqueued to supervisor's mailbox
         var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<ActorFailed>();
-            var failed = (ActorFailed)msg.Payload;
-            await Assert.That(failed.Actor).IsSameReferenceAs(actor);
-            await Assert.That(failed.Exception).IsSameReferenceAs(exception);
-            break;
-        }
+        var msg = await supervisorMailbox.DequeueAsync(cts.Token);
+        await Assert.That(msg!.Payload).IsTypeOf<ActorFailed>();
+        var failed = (ActorFailed)msg.Payload;
+        await Assert.That(failed.Actor).IsSameReferenceAs(actor);
+        await Assert.That(failed.Exception).IsSameReferenceAs(exception);
     }
 
     [Test]
@@ -1341,7 +1355,10 @@ public class SupervisorTest
         // Arrange
         var supervisor = CreateSupervisor();
         var supervisorMailbox = new ChannelMailbox();
-        supervisor.Context = new ActorContext(new LocalActorReference(supervisorMailbox), new ServiceCollection().BuildServiceProvider().CreateScope());
+        supervisor.Context = new ActorContext(
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), supervisorMailbox),
+            new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider().CreateScope()
+        );
 
         var actor = new SimpleActor();
         var args = new ActorTerminateEventArgs(actor, "shutdown");
@@ -1350,15 +1367,12 @@ public class SupervisorTest
         supervisor.HandleTermination(null, args);
 
         // Assert
-        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await foreach (var msg in supervisorMailbox.WithCancellation(cts.Token))
-        {
-            await Assert.That(msg.Payload).IsTypeOf<ActorTerminated>();
-            var terminated = (ActorTerminated)msg.Payload;
-            await Assert.That(terminated.Actor).IsSameReferenceAs(actor);
-            await Assert.That(terminated.Reason).IsEqualTo("shutdown");
-            break;
-        }
+        var cts2 = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        var msg2 = await supervisorMailbox.DequeueAsync(cts2.Token);
+        await Assert.That(msg2!.Payload).IsTypeOf<ActorTerminated>();
+        var terminated = (ActorTerminated)msg2.Payload;
+        await Assert.That(terminated.Actor).IsSameReferenceAs(actor);
+        await Assert.That(terminated.Reason).IsEqualTo("shutdown");
     }
 
     #endregion
@@ -1374,9 +1388,9 @@ public class SupervisorTest
         var supervisor = CreateSupervisor(factory: factory);
 
         var mailbox = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox },
-            new LocalActorReference(mailbox)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox)
         );
         var child = supervisor.Children[0];
         var disposableActor = (DisposableActor)child.Actor;
@@ -1442,13 +1456,13 @@ public class SupervisorTest
 
         var mailbox1 = new ChannelMailbox();
         var mailbox2 = new ChannelMailbox();
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox1 },
-            new LocalActorReference(mailbox1)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox1)
         );
-        supervisor.CreateActor(
+        await supervisor.CreateActor(
             new ChildSpecification(typeof(DisposableActor)) { Mailbox = mailbox2 },
-            new LocalActorReference(mailbox2)
+            new ActorReference(typeof(SimpleActor), new ServiceCollection().AddTrupe(c => { }).BuildServiceProvider(), mailbox2)
         );
 
         var actor1 = (DisposableActor)supervisor.Children[0].Actor;

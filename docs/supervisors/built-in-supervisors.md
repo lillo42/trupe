@@ -82,8 +82,8 @@ public class SessionSupervisor : DynamicSupervisor,
 {
     private readonly Dictionary<string, IActorReference> _sessions = new();
 
-    public SessionSupervisor(IActorFactory actorFactory, ILogger<SessionSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public SessionSupervisor(ILogger<SessionSupervisor> logger)
+        : base(logger) { }
 
     public async ValueTask HandleAsync(StartSession message, CancellationToken cancellationToken = default)
     {
@@ -138,8 +138,8 @@ public abstract class PartitionSupervisor<TActor> : Actor, ISupervisor
 ```csharp
 public class OrderProcessorPool : PartitionSupervisor<OrderProcessorActor>
 {
-    public OrderProcessorPool(IActorFactory actorFactory, ILogger<OrderProcessorPool> logger)
-        : base(actorFactory, logger, workers: 4) { }
+    public OrderProcessorPool(ILogger<OrderProcessorPool> logger)
+        : base(logger, workers: 4) { }
 }
 ```
 
@@ -169,8 +169,8 @@ You can create your own supervisor by extending the `Supervisor` base class:
 ```csharp
 public class MyCustomSupervisor : Supervisor
 {
-    public MyCustomSupervisor(IActorFactory actorFactory, ILogger<MyCustomSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public MyCustomSupervisor(ILogger<MyCustomSupervisor> logger)
+        : base(logger) { }
 
     protected override Strategy Strategy => Strategy.OneForOne;
     protected override int MaxRestarts => 10;

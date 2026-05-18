@@ -85,8 +85,8 @@ Children are typically added during the `OnInitializeAsync` hook:
 ```csharp
 public class TeamSupervisor : Supervisor
 {
-    public TeamSupervisor(IActorFactory actorFactory, ILogger<TeamSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public TeamSupervisor(ILogger<TeamSupervisor> logger)
+        : base(logger) { }
 
     protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
     {

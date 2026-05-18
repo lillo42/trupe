@@ -58,8 +58,8 @@ Supervisors manage child actors and handle their failures:
 ```csharp
 public class AppSupervisor : Supervisor
 {
-    public AppSupervisor(IActorFactory actorFactory, ILogger<AppSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public AppSupervisor(ILogger<AppSupervisor> logger)
+        : base(logger) { }
 
     protected override Strategy Strategy => Strategy.OneForOne;
     protected override int MaxRestarts => 3;
@@ -149,8 +149,8 @@ public class CalculatorActor : Actor, IHandleActorMessage<Add>
 // Supervisor
 public class AppSupervisor : Supervisor
 {
-    public AppSupervisor(IActorFactory actorFactory, ILogger<AppSupervisor> logger)
-        : base(actorFactory, logger) { }
+    public AppSupervisor(ILogger<AppSupervisor> logger)
+        : base(logger) { }
 
     protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
     {

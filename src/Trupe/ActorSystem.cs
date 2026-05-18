@@ -1,9 +1,9 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.ActorReferences;
 using Trupe.Mailboxes;
 using Trupe.Messages;
 
@@ -26,7 +26,12 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
     /// Starts the actor system by initializing the root supervisor and beginning message processing.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when the actor system is already running.</exception>
-    public void Start()
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method",
+        Justification = "Root supervisor type is always fully preserved."
+    )]
+    public async Task StartAsync()
     {
         if (_process != null)
         {
@@ -36,12 +41,12 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         var mailbox = new ChannelMailbox();
 
         _rootSupervisor.Context = new ActorContext(
-            new LocalActorReference(mailbox),
+            new ActorReference(_rootSupervisor.GetType(), serviceProvider, mailbox),
             serviceProvider.CreateAsyncScope()
         );
 
         _process = new ActorProcess(_rootSupervisor, mailbox);
-        _process.Start(new LocalTellMessage(new InitializeActor()));
+        await _process.StartAsync(new TellMessage(new InitializeActor(), []));
     }
 
     /// <summary>

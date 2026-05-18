@@ -17,7 +17,7 @@ public record ChildSpecification : IChildSpecification
     /// </summary>
     /// <param name="actorType">The type of actor to create. Must have public constructors.</param>
     public ChildSpecification(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
             Type actorType
     )
     {
@@ -27,7 +27,7 @@ public record ChildSpecification : IChildSpecification
     /// <summary>
     /// Gets the type of actor to create. Must have public constructors.
     /// </summary>
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
     public Type ActorType { get; }
 
     /// <summary>

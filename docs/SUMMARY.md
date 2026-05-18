@@ -23,5 +23,6 @@
 
 * [Getting Started](guides/getting-started.md)
 * [Dependency Injection](guides/dependency-injection.md)
+* [Pipelines and Middleware](guides/pipelines.md)
 * [Hosting Integration](guides/hosting-integration.md)
 * [AOT Compatibility](guides/aot-compatibility.md)

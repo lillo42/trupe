@@ -4,7 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Supervisors;
-using Trupe.ActorReferences;
 
 namespace Trupe.Supervisors;
 
@@ -21,7 +20,7 @@ public class Child(
     IActor actor,
     IMailbox mailbox,
     ActorProcess process,
-    LocalActorReference reference,
+    ActorReference reference,
     RestartPolicy restartPolicy,
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type actorType
 )
@@ -44,7 +43,7 @@ public class Child(
     /// <summary>
     /// Gets the actor reference used to communicate with this actor.
     /// </summary>
-    public LocalActorReference Reference { get; } = reference;
+    public ActorReference Reference { get; } = reference;
 
     /// <summary>
     /// Gets the restart policy that determines how this actor is handled after termination or failure.

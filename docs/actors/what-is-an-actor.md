@@ -122,6 +122,24 @@ public ValueTask HandleAsync(Add message, CancellationToken cancellationToken = 
 }
 ```
 
+### Message Metadata
+
+All `Tell` and `Ask` methods accept an optional `Dictionary<string, object>` metadata parameter. Metadata lets you attach contextual information (such as correlation IDs or tracing headers) to messages without changing your message types:
+
+```csharp
+// Fire-and-forget with metadata
+actorRef.Tell(new Greet("World"), new Dictionary<string, object>
+{
+    ["correlationId"] = Guid.NewGuid().ToString()
+});
+
+// Request-response with metadata
+var result = await actorRef.AskAsync<int>(new Add(2, 3), new Dictionary<string, object>
+{
+    ["source"] = "api"
+});
+```
+
 ### Termination Events
 
 You can subscribe to an actor's termination event:
