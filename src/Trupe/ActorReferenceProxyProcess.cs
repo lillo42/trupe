@@ -15,21 +15,33 @@ using Trupe.Pipelines;
 
 namespace Trupe;
 
+/// <summary>
+/// An actor reference implementation that proxies messages through the send pipeline
+/// before delivering them to the actor's mailbox. Handles both Tell (fire-and-forget)
+/// and Ask (request-response) patterns.
+/// </summary>
+/// <param name="name">The unique URI identifying this actor.</param>
+/// <param name="actorType">The type of the actor, used for pipeline resolution.</param>
+/// <param name="provider">The service provider for resolving pipeline dependencies.</param>
 public class ActorReferenceProxyProcessor(
     Uri name,
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
     IServiceProvider provider
 ) : IActorReference, IDisposable
 {
+    /// <inheritdoc />
     public Uri Name => name;
 
+    /// <inheritdoc />
     public event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
 
+    /// <inheritdoc />
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
     {
         return Ask<TResponse>(request, null, timeout);
     }
 
+    /// <inheritdoc />
     public TResponse Ask<TResponse>(
         object request,
         Dictionary<string, object>? metadata,
@@ -46,6 +58,7 @@ public class ActorReferenceProxyProcessor(
         return task.GetAwaiter().GetResult();
     }
 
+    /// <inheritdoc />
     public Task<TResponse> AskAsync<TResponse>(
         object request,
         CancellationToken cancellationToken = default
@@ -54,6 +67,7 @@ public class ActorReferenceProxyProcessor(
         return AskAsync<TResponse>(request, null, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<TResponse> AskAsync<TResponse>(
         object request,
         Dictionary<string, object>? metadata,
@@ -72,11 +86,13 @@ public class ActorReferenceProxyProcessor(
         return default!;
     }
 
+    /// <inheritdoc />
     public void Tell(object message, TimeSpan? timeout = null)
     {
         Tell(message, null, timeout);
     }
 
+    /// <inheritdoc />
     public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
     {
         using var cts = new CancellationTokenSource();
@@ -92,11 +108,13 @@ public class ActorReferenceProxyProcessor(
         }
     }
 
+    /// <inheritdoc />
     public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
     {
         return TellAsync(message, null, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async ValueTask TellAsync(
         object message,
         Dictionary<string, object>? metadata,
@@ -107,6 +125,10 @@ public class ActorReferenceProxyProcessor(
         await ExecuteAsync(actorMessage, cancellationToken);
     }
 
+    /// <summary>
+    /// Raises the <see cref="Terminated"/> event with the specified reason.
+    /// </summary>
+    /// <param name="reason">The reason for termination.</param>
     public void Terminate(TerminatedReason? reason)
     {
         Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, reason));
@@ -146,16 +168,19 @@ public class ActorReferenceProxyProcessor(
         }
     }
 
+    /// <inheritdoc />
     public void Stop()
     {
         Tell(new Stop());
     }
 
+    /// <inheritdoc />
     public async Task StopAsync()
     {
         await AskAsync<object?>(new Stop());
     }
 
+    /// <inheritdoc />
     public async Task KillAsync()
     {
         await using var scope = provider.CreateAsyncScope();
@@ -166,11 +191,15 @@ public class ActorReferenceProxyProcessor(
         await process.KillAsync();
     }
 
+    /// <inheritdoc />
     public void MarkAsTerminate(TerminatedReason reason)
     {
         Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, reason));
     }
 
+    /// <summary>
+    /// Disposes this actor reference by removing it from the process registry.
+    /// </summary>
     public void Dispose()
     {
         using var scope = provider.CreateAsyncScope();

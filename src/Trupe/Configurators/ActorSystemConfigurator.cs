@@ -224,6 +224,11 @@ public class ActorSystemConfigurator
         return this;
     }
 
+    /// <summary>
+    /// Registers a custom actor process registry instance.
+    /// </summary>
+    /// <param name="actorRegistery">The actor process registry to use.</param>
+    /// <returns>This configurator for method chaining.</returns>
     public ActorSystemConfigurator SetActorRegistery(IActorProcessRegistry actorRegistery)
     {
         _serviceCollection.AddSingleton(_ => actorRegistery);

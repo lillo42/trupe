@@ -6,19 +6,44 @@ using Trupe.Abstractions.Events;
 
 namespace Trupe.Abstractions;
 
+/// <summary>
+/// Defines the contract for communicating with an actor through message passing.
+/// Supports fire-and-forget (Tell) and request-response (Ask) patterns.
+/// </summary>
 public interface IActorReference
 {
+    /// <summary>
+    /// Gets the unique URI identifying this actor.
+    /// </summary>
     Uri Name { get; }
 
+    /// <summary>
+    /// Occurs when the actor reference is terminated.
+    /// </summary>
     event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
 
+    /// <summary>
+    /// Sends a stop message to the actor using fire-and-forget semantics.
+    /// </summary>
     void Stop();
 
+    /// <summary>
+    /// Asynchronously sends a stop message to the actor and waits for acknowledgement.
+    /// </summary>
+    /// <returns>A task representing the stop operation.</returns>
     Task StopAsync();
 
+    /// <summary>
+    /// Forcefully kills the actor process without waiting for graceful shutdown.
+    /// </summary>
+    /// <returns>A task representing the kill operation.</returns>
     Task KillAsync();
 
-    // Never call this in your code, it's for internal pro
+    /// <summary>
+    /// Marks this actor reference as terminated with the specified reason.
+    /// This is for internal use by the actor infrastructure.
+    /// </summary>
+    /// <param name="reason">The reason for termination.</param>
     void MarkAsTerminate(TerminatedReason reason);
 
     /// <summary>

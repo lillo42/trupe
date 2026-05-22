@@ -63,8 +63,16 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     /// </summary>
     public IServiceProvider ServiceProvider { get; set; } = Scope.ServiceProvider;
 
+    /// <summary>
+    /// Gets the unique URI name of the actor.
+    /// </summary>
     public Uri Name => Self.Name;
 
+    /// <summary>
+    /// Registers a death watch on the specified actor reference. When the watched actor terminates,
+    /// a <see cref="Terminated"/> message is sent to this actor.
+    /// </summary>
+    /// <param name="reference">The actor reference to watch.</param>
     public void DeathWatch(IActorReference reference)
     {
         reference.Terminated += OnDeathWatch;
@@ -88,6 +96,10 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
         }
     }
 
+    /// <summary>
+    /// Unregisters a death watch on the specified actor reference.
+    /// </summary>
+    /// <param name="reference">The actor reference to stop watching.</param>
     public void UnWatchDeath(IActorReference reference)
     {
         reference.Terminated -= OnDeathWatch;
