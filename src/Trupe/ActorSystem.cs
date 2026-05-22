@@ -39,13 +39,15 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         }
 
         var mailbox = new ChannelMailbox();
+        _process = new ActorProcess(_rootSupervisor, mailbox);
+
+        var factory = serviceProvider.GetRequiredService<IActorReferenceFactory>();
 
         _rootSupervisor.Context = new ActorContext(
-            new ActorReference(_rootSupervisor.GetType(), serviceProvider, mailbox),
+            factory.Create("root", _process),
             serviceProvider.CreateAsyncScope()
         );
 
-        _process = new ActorProcess(_rootSupervisor, mailbox);
         await _process.StartAsync(new TellMessage(new InitializeActor(), []));
     }
 
@@ -57,7 +59,7 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
     {
         if (_process != null)
         {
-            await _process.StopAsync();
+            await _process.KillAsync();
             _process = null;
         }
     }

@@ -33,7 +33,7 @@ public class RootSupervisor(IOptions<RootSupervisorOptions> options, ILogger<Roo
     }
 
     /// <inheritdoc />
-    protected override FailureAction GetFailureAction(Child child, Exception exception)
+    protected override FailureAction ResolveFailureAction(Child child, Exception exception)
     {
         return FailureAction.Restart;
     }

@@ -24,6 +24,8 @@ public interface IActorContext
     /// </remarks>
     IActorReference Self { get; }
 
+    Uri Name { get; }
+
     /// <summary>
     /// Gets or sets the response payload to be returned to the sender.
     /// </summary>
@@ -39,7 +41,7 @@ public interface IActorContext
     /// </remarks>
     object? Response { get; set; }
 
-    Dictionary<string, object?> Metadata { get; }
+    Dictionary<string, object?> Metadata { get; set; }
 
     /// <summary>
     /// Gets the <see cref="IServiceProvider"/> scoped to the current message being processed.
@@ -48,5 +50,9 @@ public interface IActorContext
     /// A new scope is created for each message, so services resolved through this provider
     /// follow the standard scoped lifetime. The scope is disposed after message processing completes.
     /// </remarks>
-    IServiceProvider ServiceProvider { get; }
+    IServiceProvider ServiceProvider { get; set; }
+
+    void DeathWatch(IActorReference reference);
+
+    void UnWatchDeath(IActorReference reference);
 }

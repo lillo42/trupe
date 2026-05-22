@@ -36,7 +36,7 @@ public class ActorSystemConfigurator
 
         _serviceCollection.TryAddSingleton<ActorSystem>();
         _serviceCollection.TryAddSingleton<IRootSupervisor, RootSupervisor>();
-        _serviceCollection.TryAddSingleton(_ => ActorRegister.Instance);
+        _serviceCollection.TryAddSingleton(_ => ActorProcessRegistry.Instance);
 
         _serviceCollection.TryAddSingleton<IPipelineLookup, PipelineRegistry>();
 
@@ -64,7 +64,7 @@ public class ActorSystemConfigurator
 
         _serviceCollection.TryAddSingleton<AskMiddleware>();
         _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
-        _serviceCollection.TryAddSingleton<MailboxDispatcherMiddleware>();
+        _serviceCollection.TryAddSingleton<ActorProcessDispatcherMiddleware>();
         _serviceCollection.Configure<PipelineOptions>(static opt =>
         {
             opt.Middlewares.Add(
@@ -87,7 +87,7 @@ public class ActorSystemConfigurator
                 new PipelineMiddlewareConfiguration
                 {
                     Order = int.MaxValue,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
+                    MiddlewareType = typeof(ActorProcessDispatcherMiddleware),
                 }
             );
         });
@@ -224,14 +224,9 @@ public class ActorSystemConfigurator
         return this;
     }
 
-    /// <summary>
-    /// Sets a custom <see cref="IActorRegister"/> instance, replacing the default <see cref="ActorRegister.Instance"/>.
-    /// </summary>
-    /// <param name="actorRegister">The <see cref="IActorRegister"/> instance to use.</param>
-    /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
-    public ActorSystemConfigurator SetActorRegister(IActorRegister actorRegister)
+    public ActorSystemConfigurator SetActorRegistery(IActorProcessRegistry actorRegistery)
     {
-        _serviceCollection.AddSingleton(_ => actorRegister);
+        _serviceCollection.AddSingleton(_ => actorRegistery);
         return this;
     }
 

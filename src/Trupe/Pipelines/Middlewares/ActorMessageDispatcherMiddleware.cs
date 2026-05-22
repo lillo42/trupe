@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.Pipelines.Metadatas;
 
 namespace Trupe.Pipelines.Middlewares;
 
@@ -46,11 +45,6 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         {
             await actor.AfterRestartAsync(cancellationToken);
         }
-        else if (message.Payload is Terminate terminate)
-        {
-            var process = context.Metadata.GetRequiredMetadata<ActorProcessMetadata>().Process;
-            await process.RequestStopAsync(terminate.Reason);
-        }
         else if (RuntimeFeature.IsDynamicCodeSupported)
         {
             var callHandle = _typedCallHandle.GetOrAdd(
@@ -72,7 +66,7 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         typeof(ActorMessageDispatcherMiddleware).GetMethod(
             nameof(CallHandle),
             BindingFlags.Static | BindingFlags.NonPublic
-        );
+        )!;
 
     private static async ValueTask CallHandle<TMessage>(
         IActor actor,

@@ -1,39 +1,70 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Events;
-using Trupe.Abstractions.Mailboxes;
-using Trupe.Abstractions.Messages;
-using Trupe.Abstractions.Pipelines;
-using Trupe.Abstractions.Pipelines.Metadatas;
-using Trupe.Messages;
-using Trupe.Pipelines;
 
 namespace Trupe;
 
 /// <summary>
-/// Default implementation of <see cref="IActorReference"/> that sends messages to an actor through a send pipeline and mailbox.
+/// A decorator around an <see cref="IActorReference"/> that resolves references via the actor process registry.
+/// Supports creating references by name or URI for lookup-based resolution.
 /// </summary>
-/// <param name="actorType">The type of the actor this reference points to.</param>
-/// <param name="provider">The service provider used to create scoped pipeline instances.</param>
-/// <param name="mailbox">The mailbox used to deliver messages to the actor.</param>
-public class ActorReference(
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
-    IServiceProvider provider,
-    IMailbox mailbox)
-    : IActorReference
+public class ActorReference : IActorReference, IDisposable
 {
+    private readonly IActorReference _inner;
+
+    /// <summary>
+    /// Creates a new actor reference wrapping the specified inner reference.
+    /// </summary>
+    /// <param name="inner">The inner actor reference to delegate to.</param>
+    public ActorReference(IActorReference inner)
+    {
+        _inner = inner;
+        _inner.Terminated += OnTerminated;
+    }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the name from the default registry.
+    /// </summary>
+    /// <param name="name">The actor name used for registry lookup.</param>
+    public ActorReference(string name)
+        : this(new Uri($"trupe://localhost/{name}"), ActorProcessRegistry.Instance) { }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the URI from the default registry.
+    /// </summary>
+    /// <param name="name">The actor URI used for registry lookup.</param>
+    public ActorReference(Uri name)
+        : this(name, ActorProcessRegistry.Instance) { }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the name from the specified registry.
+    /// </summary>
+    /// <param name="name">The actor name used for registry lookup.</param>
+    /// <param name="registry">The registry to resolve the reference from.</param>
+    public ActorReference(string name, IActorProcessRegistry registry)
+        : this(new Uri($"trupe://localhost/{name}"), registry) { }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the URI from the specified registry.
+    /// </summary>
+    /// <param name="name">The actor URI used for registry lookup.</param>
+    /// <param name="registry">The registry to resolve the reference from.</param>
+    public ActorReference(Uri name, IActorProcessRegistry registry)
+        : this(registry.GetReference(name)) { }
+
     /// <inheritdoc />
-    public event EventHandler<TerminatedEventArgs>? Terminated;
+    public Uri Name => _inner.Name;
+
+    /// <inheritdoc />
+    public event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
 
     /// <inheritdoc />
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
     {
-        return Ask<TResponse>(request, null, timeout);
+        return _inner.Ask<TResponse>(request, timeout);
     }
 
     /// <inheritdoc />
@@ -43,14 +74,7 @@ public class ActorReference(
         TimeSpan? timeout = null
     )
     {
-        using var cts = new CancellationTokenSource();
-        if (timeout.HasValue)
-        {
-            cts.CancelAfter(timeout.Value);
-        }
-
-        var task = AskAsync<TResponse>(request, metadata, cts.Token);
-        return task.GetAwaiter().GetResult();
+        return _inner.Ask<TResponse>(request, metadata, timeout);
     }
 
     /// <inheritdoc />
@@ -59,112 +83,79 @@ public class ActorReference(
         CancellationToken cancellationToken = default
     )
     {
-        return AskAsync<TResponse>(request, null, cancellationToken);
+        return _inner.AskAsync<TResponse>(request, cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task<TResponse> AskAsync<TResponse>(
+    public Task<TResponse> AskAsync<TResponse>(
         object request,
         Dictionary<string, object>? metadata,
         CancellationToken cancellationToken = default
     )
     {
-        var actorMessage = new AskMessage(request, metadata ?? [], cancellationToken);
-        await ExecuteAsync(actorMessage, cancellationToken);
-
-        var response = await actorMessage.AsTask();
-        if (response != null)
-        {
-            return (TResponse)response;
-        }
-
-        return default!;
-    }
-
-    /// <inheritdoc />
-    public bool Equals(IActorReference? other)
-    {
-        return ReferenceEquals(this, other);
+        return _inner.AskAsync<TResponse>(request, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
     public void Tell(object message, TimeSpan? timeout = null)
     {
-        Tell(message, null, timeout);
+        _inner.Tell(message, timeout);
     }
 
     /// <inheritdoc />
     public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
     {
-        using var cts = new CancellationTokenSource();
-        if (timeout.HasValue)
-        {
-            cts.CancelAfter(timeout.Value);
-        }
-
-        var val = TellAsync(message, metadata, cts.Token);
-        if (!val.IsCompleted)
-        {
-            val.AsTask().GetAwaiter().GetResult();
-        }
+        _inner.Tell(message, metadata, timeout);
     }
 
     /// <inheritdoc />
     public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
     {
-        return TellAsync(message, null, cancellationToken);
+        return _inner.TellAsync(message, cancellationToken);
     }
 
     /// <inheritdoc />
-    public async ValueTask TellAsync(
+    public ValueTask TellAsync(
         object message,
         Dictionary<string, object>? metadata,
         CancellationToken cancellationToken = default
     )
     {
-        var actorMessage = new TellMessage(message, metadata ?? [], CancellationToken.None);
-        await ExecuteAsync(actorMessage, cancellationToken);
+        return _inner.TellAsync(message, metadata, cancellationToken);
     }
 
-    /// <summary>
-    /// Raises the <see cref="Terminated"/> event to notify subscribers that this actor reference is being terminated.
-    /// </summary>
-    /// <param name="reason">An optional reason describing why the actor is being terminated.</param>
-    public void Terminate(string? reason)
+    /// <inheritdoc />
+    public void Dispose()
     {
-        Terminated?.Invoke(this, new TerminatedEventArgs(this, reason));
+        _inner.Terminated -= OnTerminated;
     }
 
-    private async ValueTask ExecuteAsync(
-        IMessage message,
-        CancellationToken cancellationToken = default
-    )
+    private void OnTerminated(object? sender, ActorReferenceTerminatedEventArgs args)
     {
-        await using var scope = provider.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
+        Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, args.Reason));
+    }
 
-        var pipelineFactory = sp.GetRequiredService<ISendPipelineFactory>();
-        var pipelineContextFactory = sp.GetRequiredService<ISendPipelineContextFactory>();
+    /// <inheritdoc />
+    public void Stop()
+    {
+        _inner.Stop();
+    }
 
-        var pipeline = pipelineFactory.Create(actorType, message.Payload.GetType());
-        var context = pipelineContextFactory.Create(
-            this,
-            actorType,
-            message,
-            [new MailboxMetadata(mailbox)],
-            cancellationToken
-        );
+    /// <inheritdoc />
+    public async Task StopAsync()
+    {
+        await _inner.StopAsync();
+    }
 
-        var accessor = sp.GetRequiredService<SettableSendPipelineContextAccessor>();
-        accessor.SendContext = context;
+    /// <inheritdoc />
+    public Task KillAsync()
+    {
+        return _inner.KillAsync();
+    }
 
-        try
-        {
-            await pipeline.ExecuteAsync(context);
-        }
-        finally
-        {
-            accessor.SendContext = null;
-        }
+    /// <inheritdoc />
+    public void MarkAsTerminate(TerminatedReason reason)
+    {
+        _inner.MarkAsTerminate(reason);
     }
 }

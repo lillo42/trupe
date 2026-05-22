@@ -23,6 +23,11 @@ public abstract class DynamicSupervisor(ILogger logger)
     protected sealed override Strategy Strategy => Strategy.OneForOne;
 
     /// <summary>
+    /// Always returns <see langword="false"/> since dynamic supervisors allow adding children at any time.
+    /// </summary>
+    protected override bool Initialized => false;
+
+    /// <summary>
     /// Handles the <see cref="RemoveChild"/> message by removing the specified child actor
     /// from the supervisor, stopping it, and disposing of its resources.
     /// </summary>
@@ -39,53 +44,43 @@ public abstract class DynamicSupervisor(ILogger logger)
         {
             Children = Children.Remove(child);
 
-            await StopActorAsync(child);
-            await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
+            child.Process.Failed -= OnActorProcessFailed;
+            child.Process.Stopped -= OnActorProcessStopped;
 
-            await child.Process.DisposeAsync();
+            var ctx = child.Actor.Context;
+            await DisposeObjectAsync(child.Process);
+            await DisposeObjectAsync(child.Actor);
+            await DisposeObjectAsync(ctx);
 
             child.Actor = null!;
             child.Process = null!;
         }
-    }
-
-    /// <summary>
-    /// Adds a child actor by sending an <see cref="AddActor"/> command to this supervisor.
-    /// </summary>
-    /// <param name="specification">The specification defining the child actor to create.</param>
-    /// <returns>A reference to the newly created child actor.</returns>
-    protected override IActorReference AddChild(IChildSpecification specification)
-    {
-        var actorRef = new ActorReference(
-            specification.ActorType,
-            Context.ServiceProvider,
-            specification.Mailbox
-        );
-        Context.Self.Tell(new AddActor(specification, actorRef));
-
-        return actorRef;
     }
 
     /// <inheritdoc />
     /// <remarks>
     /// Removes temporary actors from the children list after failure.
     /// </remarks>
-    protected override async Task OnActorFailedAsync(
+    protected override async Task OnActorProcessFailedAsync(
         Child child,
         IMessage message,
         Exception exception,
         CancellationToken cancellationToken = default
     )
     {
-        await base.OnActorFailedAsync(child, message, exception, cancellationToken);
+        await base.OnActorProcessFailedAsync(child, message, exception, cancellationToken);
 
         if (child.RestartPolicy == RestartPolicy.Temporary)
         {
             Children = Children.Remove(child);
 
+            child.Process.Failed -= OnActorProcessFailed;
+            child.Process.Stopped -= OnActorProcessStopped;
+
+            var ctx = child.Actor.Context;
+            await DisposeObjectAsync(child.Process);
             await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
+            await DisposeObjectAsync(ctx);
 
             child.Actor = null!;
             child.Process = null!;
@@ -94,54 +89,29 @@ public abstract class DynamicSupervisor(ILogger logger)
 
     /// <inheritdoc />
     /// <remarks>
-    /// Removes non-permanent actors from the children list after termination.
+    /// Removes non-permanent actors from the children list after they are stopped.
     /// </remarks>
-    protected override async ValueTask OnActorTerminatedAsync(
+    protected override async ValueTask OnActorProcessStoppedAsync(
         Child child,
-        string? reason,
+        TerminatedReason reason,
         CancellationToken cancellationToken = default
     )
     {
-        await base.OnActorTerminatedAsync(child, reason, cancellationToken);
+        await base.OnActorProcessStoppedAsync(child, reason, cancellationToken);
         if (child.RestartPolicy != RestartPolicy.Permanent)
         {
             Children = Children.Remove(child);
 
+            child.Process.Failed -= OnActorProcessFailed;
+            child.Process.Stopped -= OnActorProcessStopped;
+
+            var ctx = child.Actor.Context;
+            await DisposeObjectAsync(child.Process);
             await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
+            await DisposeObjectAsync(ctx);
 
             child.Actor = null!;
             child.Process = null!;
-        }
-    }
-
-    /// <inheritdoc />
-    protected override ValueTask<IActorReference> AddChildAsync(
-        IChildSpecification specification,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var actorRef = new ActorReference(
-            specification.ActorType,
-            Context.ServiceProvider,
-            specification.Mailbox
-        );
-
-        var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
-
-        if (val.IsCompletedSuccessfully)
-        {
-            return new ValueTask<IActorReference>(actorRef);
-        }
-        else
-        {
-            return new ValueTask<IActorReference>(AwaitAddChildAsync(val.AsTask(), actorRef));
-        }
-
-        static async Task<IActorReference> AwaitAddChildAsync(Task val, IActorReference actorRef)
-        {
-            await val;
-            return actorRef;
         }
     }
 

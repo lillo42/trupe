@@ -65,14 +65,4 @@ public interface IMailbox
     ValueTask EnqueueAsync(IMessage message, CancellationToken cancellationToken = default);
 
     ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Asynchronously clears all pending messages from the mailbox and resets it to an empty state.
-    /// </summary>
-    /// <remarks>
-    /// This method is typically called during actor restart to ensure the actor starts fresh
-    /// without processing any stale messages from its previous lifecycle.
-    /// </remarks>
-    /// <returns>A <see cref="ValueTask"/> representing the asynchronous clean operation.</returns>
-    ValueTask CleanAsync();
 }

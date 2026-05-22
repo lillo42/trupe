@@ -11,7 +11,7 @@ namespace Trupe.Abstractions.Events;
 /// </remarks>
 /// <param name="actor">The actor that is being terminated.</param>
 /// <param name="reason">An optional reason describing why the actor is being terminated.</param>
-public class ActorTerminateEventArgs(IActor actor, string? reason) : EventArgs
+public class ActorTerminateEventArgs(IActor actor, TerminatedReason reason) : EventArgs
 {
     /// <summary>
     /// Gets the actor that is being terminated.
@@ -21,5 +21,5 @@ public class ActorTerminateEventArgs(IActor actor, string? reason) : EventArgs
     /// <summary>
     /// Gets the optional reason describing why the actor is being terminated.
     /// </summary>
-    public string? Reason { get; } = reason;
+    public TerminatedReason Reason { get; } = reason;
 }

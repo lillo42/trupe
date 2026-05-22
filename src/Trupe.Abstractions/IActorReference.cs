@@ -6,32 +6,20 @@ using Trupe.Abstractions.Events;
 
 namespace Trupe.Abstractions;
 
-/// <summary>
-/// Represents a reference to an actor in the Trupe actor system.
-/// Actor references are the primary mechanism for communicating with actors,
-/// providing location transparency and allowing message passing between actors.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Actor references are lightweight, serializable proxies that can be passed
-/// between actors and across network boundaries. They implement the actor's
-/// address and communication patterns.
-/// </para>
-/// <para>
-/// This interface supports both fire-and-forget (<see cref="Tell(object, TimeSpan?)"/>)
-/// and request-response (<see cref="Ask{TResponse}(object, TimeSpan?)"/>) messaging patterns.
-/// </para>
-/// </remarks>
-public interface IActorReference : IEquatable<IActorReference>
+public interface IActorReference
 {
-    /// <summary>
-    /// Occurs when the referenced actor is terminated.
-    /// </summary>
-    /// <remarks>
-    /// Subscribers are notified when the actor stops, allowing dependent components
-    /// to react to actor lifecycle changes (e.g., cleanup or restart logic).
-    /// </remarks>
-    event EventHandler<TerminatedEventArgs>? Terminated;
+    Uri Name { get; }
+
+    event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
+
+    void Stop();
+
+    Task StopAsync();
+
+    Task KillAsync();
+
+    // Never call this in your code, it's for internal pro
+    void MarkAsTerminate(TerminatedReason reason);
 
     /// <summary>
     /// Sends a request message to the actor and synchronously waits for a response.
@@ -68,7 +56,7 @@ public interface IActorReference : IEquatable<IActorReference>
     /// <returns>The response from the actor.</returns>
     TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object>? metadata = null,
         TimeSpan? timeout = null
     );
 

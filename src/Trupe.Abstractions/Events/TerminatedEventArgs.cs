@@ -11,7 +11,8 @@ namespace Trupe.Abstractions.Events;
 /// </remarks>
 /// <param name="reference">The reference to the actor that was terminated.</param>
 /// <param name="reason">An optional reason describing why the actor was terminated.</param>
-public class TerminatedEventArgs(IActorReference reference, string? reason) : EventArgs
+public class ActorReferenceTerminatedEventArgs(IActorReference reference, TerminatedReason? reason)
+    : EventArgs
 {
     /// <summary>
     /// Gets the reference to the actor that was terminated.
@@ -21,5 +22,5 @@ public class TerminatedEventArgs(IActorReference reference, string? reason) : Ev
     /// <summary>
     /// Gets the optional reason describing why the actor was terminated.
     /// </summary>
-    public string? Reason { get; } = reason;
+    public TerminatedReason? Reason { get; } = reason;
 }

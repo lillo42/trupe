@@ -11,39 +11,46 @@ namespace Trupe.Supervisors;
 /// Represents the metadata and state of a child actor managed by a supervisor.
 /// </summary>
 /// <param name="actor">The actor instance.</param>
-/// <param name="mailbox">The mailbox used for message delivery.</param>
-/// <param name="process">The actor process managing the message loop.</param>
-/// <param name="reference">The local actor reference for communication.</param>
-/// <param name="restartPolicy">The restart policy for this child actor.</param>
+/// <param name="process">The actor process managing execution.</param>
+/// <param name="restartPolicy">The restart policy for this child.</param>
+/// <param name="mailboxFactory">Factory function to create mailboxes for this child.</param>
 /// <param name="actorType">The original type of the actor, used for recreation during restart.</param>
 public class Child(
     IActor actor,
-    IMailbox mailbox,
-    ActorProcess process,
-    ActorReference reference,
+    IActorProcess process,
     RestartPolicy restartPolicy,
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type actorType
+    Func<IServiceProvider, IMailbox> mailboxFactory,
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
+        Type actorType
 )
 {
     /// <summary>
-    /// Gets or sets the actor instance. This may be replaced during restart.
+    /// Gets or sets the actor instance managed by this child entry.
     /// </summary>
     public IActor Actor { get; set; } = actor;
 
     /// <summary>
-    /// Gets or sets the actor process managing the message loop. This may be replaced during restart.
+    /// Gets or sets the actor process managing execution for this child.
     /// </summary>
-    public ActorProcess Process { get; set; } = process;
+    public IActorProcess Process { get; set; } = process;
 
     /// <summary>
-    /// Gets the mailbox used for message delivery to the actor.
+    /// Gets the factory function used to create mailboxes for this child actor.
     /// </summary>
-    public IMailbox Mailbox { get; } = mailbox;
+    public Func<IServiceProvider, IMailbox> MailboxFactory { get; } = mailboxFactory;
 
     /// <summary>
-    /// Gets the actor reference used to communicate with this actor.
+    /// Gets the unique name (URI) of this child actor.
     /// </summary>
-    public ActorReference Reference { get; } = reference;
+    public Uri Name => Actor.Context.Name;
+
+    /// <summary>
+    /// Gets the actor reference for communicating with this child actor.
+    /// </summary>
+    public IActorReference Reference => Actor.Context.Self;
 
     /// <summary>
     /// Gets the restart policy that determines how this actor is handled after termination or failure.
@@ -53,7 +60,10 @@ public class Child(
     /// <summary>
     /// Gets the original type of the actor, used for recreation during restart.
     /// </summary>
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
     public Type ActorType { get; } = actorType;
 
     /// <summary>

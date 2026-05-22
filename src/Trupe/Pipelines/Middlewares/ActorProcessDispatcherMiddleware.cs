@@ -7,7 +7,7 @@ namespace Trupe.Pipelines.Middlewares;
 /// <summary>
 /// Send middleware that enqueues the outgoing message into the target actor's mailbox.
 /// </summary>
-public class MailboxDispatcherMiddleware : ISendMiddleware
+public class ActorProcessDispatcherMiddleware : ISendMiddleware
 {
     /// <summary>
     /// Enqueues the message into the mailbox obtained from the pipeline metadata.
@@ -16,7 +16,7 @@ public class MailboxDispatcherMiddleware : ISendMiddleware
     /// <param name="next">The delegate to invoke the next middleware in the pipeline (not called; this is a terminal middleware).</param>
     public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
     {
-        var mailbox = context.Metadata.GetRequiredMetadata<MailboxMetadata>();
-        await mailbox.Mailbox.EnqueueAsync(context.Message, context.CancellationToken);
+        var process = context.Metadata.GetRequiredMetadata<ActorProcessMetadata>().Process;
+        await process.Mailbox.EnqueueAsync(context.Message, context.CancellationToken);
     }
 }

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Events;
+using Trupe.Abstractions.SystemMessages;
 
 namespace Trupe;
 
@@ -54,18 +56,27 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     /// <summary>
     /// Gets the actor-scoped metadata dictionary.
     /// </summary>
-    public Dictionary<string, object?> Metadata { get; } = [];
+    public Dictionary<string, object?> Metadata { get; set; } = [];
 
     /// <summary>
     /// Gets the scoped service provider derived from the associated <see cref="Scope"/>.
     /// </summary>
-    public IServiceProvider ServiceProvider { get; } = Scope.ServiceProvider;
+    public IServiceProvider ServiceProvider { get; set; } = Scope.ServiceProvider;
+
+    public Uri Name => Self.Name;
+
+    public void DeathWatch(IActorReference reference)
+    {
+        reference.Terminated += OnDeathWatch;
+    }
 
     /// <summary>
     /// Asynchronously disposes the associated DI scope.
     /// </summary>
     public ValueTask DisposeAsync()
     {
+        GC.SuppressFinalize(this);
+
         if (Scope is IAsyncDisposable asyncDisposable)
         {
             return asyncDisposable.DisposeAsync();
@@ -75,5 +86,15 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
             Scope.Dispose();
             return new ValueTask();
         }
+    }
+
+    public void UnWatchDeath(IActorReference reference)
+    {
+        reference.Terminated -= OnDeathWatch;
+    }
+
+    private void OnDeathWatch(object? sender, ActorReferenceTerminatedEventArgs args)
+    {
+        Self.Tell(new Terminated(args.Reference, TerminatedReason.Stopped));
     }
 }
