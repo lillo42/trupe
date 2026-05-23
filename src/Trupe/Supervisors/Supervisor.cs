@@ -91,7 +91,7 @@ public abstract partial class Supervisor(ILogger logger)
             DynamicallyAccessedMemberTypes.PublicConstructors
                 | DynamicallyAccessedMemberTypes.PublicMethods
         )]
-            TActor
+    TActor
     >()
         where TActor : IActor
     {
@@ -155,7 +155,7 @@ public abstract partial class Supervisor(ILogger logger)
             DynamicallyAccessedMemberTypes.PublicConstructors
                 | DynamicallyAccessedMemberTypes.PublicMethods
         )]
-            TActor
+    TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
     {

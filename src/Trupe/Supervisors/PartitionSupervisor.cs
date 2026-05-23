@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Mailboxes;
@@ -23,7 +22,7 @@ public abstract partial class PartitionSupervisor<
         DynamicallyAccessedMemberTypes.PublicConstructors
             | DynamicallyAccessedMemberTypes.PublicMethods
     )]
-        TActor
+TActor
 >(ILogger logger, int workers) : AbstractSupervisor(logger), ISupervisor, IAsyncDisposable
     where TActor : IActor
 {

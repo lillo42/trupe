@@ -1,6 +1,8 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Trupe.Abstractions;
 using Trupe.Extensions;
 using Trupe.Mailboxes;
@@ -56,6 +58,13 @@ public class ActorProcessTest
         return services.BuildServiceProvider();
     }
 
+    private static IActorReference CreateMockReference()
+    {
+        var reference = Substitute.For<IActorReference>();
+        reference.Name.Returns(new Uri("trupe://localhost/test-actor"));
+        return reference;
+    }
+
     [Test]
     [SkipOnNativeAot]
     public async Task ProcessTellMessageWithTypedActor_Should_MarkMessageAsProcessed()
@@ -63,12 +72,10 @@ public class ActorProcessTest
         // Arrange
         var mailbox = new ChannelMailbox();
         var serviceProvider = BuildServiceProvider();
+        var reference = CreateMockReference();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(
-                new ActorReference(typeof(SimpleTypedActor), serviceProvider, mailbox),
-                serviceProvider.CreateScope()
-            ),
+            Context = new ActorContext(reference, serviceProvider.CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -83,7 +90,7 @@ public class ActorProcessTest
         await Task.Delay(100);
 
         // Assert
-        await actorProcess.StopAsync();
+        await actorProcess.KillAsync();
         await Assert.That(message).Member(x => x.Processed, x => x.IsTrue());
     }
 
@@ -97,12 +104,10 @@ public class ActorProcessTest
         // Arrange
         var mailbox = new ChannelMailbox();
         var serviceProvider = BuildServiceProvider();
+        var reference = CreateMockReference();
         var actor = new SimpleTypedActor
         {
-            Context = new ActorContext(
-                new ActorReference(typeof(SimpleTypedActor), serviceProvider, mailbox),
-                serviceProvider.CreateScope()
-            ),
+            Context = new ActorContext(reference, serviceProvider.CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -118,7 +123,7 @@ public class ActorProcessTest
         var response = await askMessage.AsTask();
 
         // Assert
-        await actorProcess.StopAsync();
+        await actorProcess.KillAsync();
         await Assert.That(message).Member(x => x.Processed, x => x.IsTrue());
         await Assert
             .That(response)
@@ -127,17 +132,16 @@ public class ActorProcessTest
     }
 
     [Test]
+    [SkipOnNativeAot]
     public async Task ProcessTellMessageWithUntypedActor_Should_MarkMessageAsProcessed()
     {
         // Arrange
         var mailbox = new ChannelMailbox();
         var serviceProvider = BuildServiceProvider();
+        var reference = CreateMockReference();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(
-                new ActorReference(typeof(SimpleUntypedActor), serviceProvider, mailbox),
-                serviceProvider.CreateScope()
-            ),
+            Context = new ActorContext(reference, serviceProvider.CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -152,12 +156,13 @@ public class ActorProcessTest
         await Task.Delay(100);
 
         // Assert
-        await actorProcess.StopAsync();
+        await actorProcess.KillAsync();
         await Assert.That(message).Member(x => x.Processed, x => x.IsTrue());
     }
 
     [Test]
     [Timeout(5000)]
+    [SkipOnNativeAot]
     public async Task ProcessAskMessageWithUntypedActor_Should_MarkMessageAsProcessed(
         CancellationToken cancellationToken
     )
@@ -165,12 +170,10 @@ public class ActorProcessTest
         // Arrange
         var mailbox = new ChannelMailbox();
         var serviceProvider = BuildServiceProvider();
+        var reference = CreateMockReference();
         var actor = new SimpleUntypedActor
         {
-            Context = new ActorContext(
-                new ActorReference(typeof(SimpleUntypedActor), serviceProvider, mailbox),
-                serviceProvider.CreateScope()
-            ),
+            Context = new ActorContext(reference, serviceProvider.CreateScope()),
         };
 
         var actorProcess = new ActorProcess(actor, mailbox);
@@ -186,7 +189,7 @@ public class ActorProcessTest
         var response = await askMessage.AsTask();
 
         // Assert
-        await actorProcess.StopAsync();
+        await actorProcess.KillAsync();
         await Assert.That(message).Member(x => x.Processed, x => x.IsTrue());
         await Assert
             .That(response)

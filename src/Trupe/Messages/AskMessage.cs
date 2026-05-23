@@ -26,7 +26,7 @@ public class AskMessage : IAskMessage
     public CancellationToken CancellationToken { get; }
 
     /// <inheritdoc />
-    public Dictionary<string, object> Metadata { get; set; } = [];
+    public Dictionary<string, object?> Metadata { get; set; } = [];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AskMessage"/> class.
@@ -48,7 +48,7 @@ public class AskMessage : IAskMessage
     /// </remarks>
     public AskMessage(
         object value,
-        Dictionary<string, object> metadata,
+        Dictionary<string, object?> metadata,
         CancellationToken cancellationToken = default
     )
     {

@@ -20,6 +20,6 @@ namespace Trupe.Messages;
 /// </param>
 public record TellMessage(
     object Payload,
-    Dictionary<string, object> Metadata,
+    Dictionary<string, object?> Metadata,
     CancellationToken CancellationToken = default
 ) : ITellMessage;

@@ -15,7 +15,6 @@ namespace Trupe;
 /// and restarts them on failure.
 /// </summary>
 /// <param name="options">The options containing the child actor specifications.</param>
-/// <param name="actorFactory">The factory used to create actor instances.</param>
 /// <param name="logger">The logger instance.</param>
 public class RootSupervisor(IOptions<RootSupervisorOptions> options, ILogger<RootSupervisor> logger)
     : Supervisor(logger),

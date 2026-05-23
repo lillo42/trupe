@@ -38,7 +38,7 @@ public interface IMessage
     /// A dictionary of key-value pairs containing additional contextual information
     /// attached to the message by the sender.
     /// </value>
-    Dictionary<string, object> Metadata { get; }
+    Dictionary<string, object?> Metadata { get; }
 
     /// <summary>
     /// Gets the cancellation token associated with the message.

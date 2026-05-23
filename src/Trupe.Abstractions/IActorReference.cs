@@ -81,7 +81,7 @@ public interface IActorReference
     /// <returns>The response from the actor.</returns>
     TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object>? metadata = null,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     );
 
@@ -123,7 +123,7 @@ public interface IActorReference
     /// <returns>A <see cref="ValueTask{TResult}"/> containing the response from the actor.</returns>
     Task<TResponse> AskAsync<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     );
 
@@ -147,7 +147,7 @@ public interface IActorReference
     /// The maximum time to wait for the message to be enqueued in the actor's mailbox.
     /// If <see langword="null"/>, the method will wait indefinitely.
     /// </param>
-    void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null);
+    void Tell(object message, Dictionary<string, object?>? metadata, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a message to the actor using fire-and-forget semantics
@@ -188,7 +188,7 @@ public interface IActorReference
     /// <returns>A <see cref="ValueTask"/> that completes when the message has been queued.</returns>
     ValueTask TellAsync(
         object message,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     );
 }

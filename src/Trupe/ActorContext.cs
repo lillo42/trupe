@@ -21,8 +21,8 @@ namespace Trupe;
 /// Instances of this class are generally short-lived and are discarded after the message has been processed.
 /// </para>
 /// </remarks>
-/// <param name="self">The reference to the actor this context belongs to.</param>
-/// <param name="scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
+/// <param name="Self">The reference to the actor this context belongs to.</param>
+/// <param name="Scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
 public record ActorContext(IActorReference Self, IServiceScope Scope)
     : IActorContext,
         IAsyncDisposable

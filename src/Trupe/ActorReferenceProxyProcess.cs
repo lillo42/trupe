@@ -25,7 +25,11 @@ namespace Trupe;
 /// <param name="provider">The service provider for resolving pipeline dependencies.</param>
 public class ActorReferenceProxyProcessor(
     Uri name,
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
+        Type actorType,
     IServiceProvider provider
 ) : IActorReference, IDisposable
 {
@@ -44,7 +48,7 @@ public class ActorReferenceProxyProcessor(
     /// <inheritdoc />
     public TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         TimeSpan? timeout = null
     )
     {
@@ -70,7 +74,7 @@ public class ActorReferenceProxyProcessor(
     /// <inheritdoc />
     public async Task<TResponse> AskAsync<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {
@@ -93,7 +97,11 @@ public class ActorReferenceProxyProcessor(
     }
 
     /// <inheritdoc />
-    public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
+    public void Tell(
+        object message,
+        Dictionary<string, object?>? metadata,
+        TimeSpan? timeout = null
+    )
     {
         using var cts = new CancellationTokenSource();
         if (timeout.HasValue)
@@ -102,10 +110,7 @@ public class ActorReferenceProxyProcessor(
         }
 
         var val = TellAsync(message, metadata, cts.Token);
-        if (!val.IsCompleted)
-        {
-            val.AsTask().GetAwaiter().GetResult();
-        }
+        val.GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
@@ -117,21 +122,12 @@ public class ActorReferenceProxyProcessor(
     /// <inheritdoc />
     public async ValueTask TellAsync(
         object message,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {
         var actorMessage = new TellMessage(message, metadata ?? [], CancellationToken.None);
         await ExecuteAsync(actorMessage, cancellationToken);
-    }
-
-    /// <summary>
-    /// Raises the <see cref="Terminated"/> event with the specified reason.
-    /// </summary>
-    /// <param name="reason">The reason for termination.</param>
-    public void Terminate(TerminatedReason? reason)
-    {
-        Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, reason));
     }
 
     private async ValueTask ExecuteAsync(
@@ -202,6 +198,8 @@ public class ActorReferenceProxyProcessor(
     /// </summary>
     public void Dispose()
     {
+        GC.SuppressFinalize(this);
+
         using var scope = provider.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 

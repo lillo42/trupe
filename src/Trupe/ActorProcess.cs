@@ -117,12 +117,12 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
                 message.CancellationToken
             );
 
-            await ProcessAsync(actor, message, cts.Token);
+            await ProcessAsync(Actor, message, cts.Token);
         }
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var message = await mailbox.DequeueAsync(cancellationToken);
+            var message = await Mailbox.DequeueAsync(cancellationToken);
             if (message == null || message.CancellationToken.IsCancellationRequested)
             {
                 continue;
@@ -133,7 +133,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
                 message.CancellationToken
             );
 
-            await ProcessAsync(actor, message, cts.Token);
+            await ProcessAsync(Actor, message, cts.Token);
 
             if (message.Payload is Stop)
             {
@@ -217,13 +217,13 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
     {
         if (message.Payload is IUseSameActorScopeServiceMessage)
         {
-            return new ActorServiceScope(actor.Context.ServiceProvider);
+            return new ActorServiceScope(Actor.Context.ServiceProvider);
         }
 
-        return actor.Context.ServiceProvider.CreateAsyncScope();
+        return Actor.Context.ServiceProvider.CreateAsyncScope();
     }
 
-    private async ValueTask DisposeContextIfNecessary(IMessage message, object obj)
+    private static async ValueTask DisposeContextIfNecessary(IMessage message, object obj)
     {
         if (message.Payload is not IUseSameActorScopeServiceMessage)
         {

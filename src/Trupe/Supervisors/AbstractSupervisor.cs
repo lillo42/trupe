@@ -1,21 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Supervisors.Commands;
 using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
+using Trupe.Abstractions.Supervisors.Commands;
 using Trupe.Abstractions.SystemMessages;
 using Trupe.Messages;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Trupe.Supervisors;
 
@@ -76,9 +76,16 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <remarks>
     /// Calls <see cref="OnInitializeAsync"/> to allow derived classes to perform initialization logic.
     /// </remarks>
-    public virtual async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
+    public override async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await OnInitializeAsync(cancellationToken);
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
+        {
+            Log.InitializingSupervisor(Logger);
+
+            await OnInitializeAsync(cancellationToken);
+
+            Log.SupervisoInitialized(Logger);
+        }
     }
 
     /// <summary>
@@ -92,13 +99,17 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <remarks>
     /// Stops and disposes all child actors before the supervisor restarts.
     /// </remarks>
-    public virtual async ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default)
+    public override async ValueTask BeforeRestartAsync(
+        CancellationToken cancellationToken = default
+    )
     {
+        Log.BeforeRestartSupervisor(Logger, Children.Count);
+
         foreach (var child in Children)
         {
             child.Process.Failed -= OnActorProcessFailed;
             child.Process.Stopped -= OnActorProcessStopped;
-            
+
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Actor);
             await DisposeObjectAsync(ctx);
@@ -110,6 +121,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         }
 
         Children = [];
+
+        Log.BeforeRestartSupervisorCompleted(Logger);
     }
 
     /// <inheritdoc />
@@ -117,11 +130,13 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// Routes <see cref="ActorProcessFailed"/> and <see cref="ActorProcessStopped"/>
     /// messages to their respective typed handlers before falling back to the base implementation.
     /// </remarks>
-    public virtual async ValueTask HandleAsync(
+    public override async ValueTask HandleAsync(
         object? message,
         CancellationToken cancellationToken = default
     )
     {
+        Log.HandlingMessage(Logger, message?.GetType());
+
         if (message is ActorProcessFailed failed)
         {
             await HandleAsync(failed, cancellationToken);
@@ -132,8 +147,14 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         }
         else
         {
-            await base.HandleAsync(message, cancellationToken);
+            using (Logger.BeginScope("{MessageType}", message?.GetType()))
+            using (Logger.BeginScope("{SupervisorName}", Context.Name))
+            {
+                await base.HandleAsync(message, cancellationToken);
+            }
         }
+
+        Log.MessageHandled(Logger, message?.GetType());
     }
 
     /// <summary>
@@ -147,18 +168,30 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
-        var child = Children.FirstOrDefault(x => x.Actor == message.Process);
-        if (child == null)
+        using (Logger.BeginScope("{MessageType}", message.GetType()))
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            return;
-        }
+            Log.HandlingActorProcessFailed(
+                Logger,
+                message.Exception,
+                message.Message.Payload.GetType(),
+                message.Process.Actor.Context.Name
+            );
 
-        await OnActorProcessFailedAsync(
-            child,
-            message.Message,
-            message.Exception,
-            cancellationToken
-        );
+            var child = Children.FirstOrDefault(x => x.Process == message.Process);
+            if (child == null)
+            {
+                Log.ChildNotFound(Logger, message.Process.Actor.Context.Name);
+                return;
+            }
+
+            await OnActorProcessFailedAsync(
+                child,
+                message.Message,
+                message.Exception,
+                cancellationToken
+            );
+        }
     }
 
     /// <summary>
@@ -168,17 +201,28 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the stopped handling operation.</returns>
     public virtual async ValueTask HandleAsync(
-        ActorProcessStopped  message,
+        ActorProcessStopped message,
         CancellationToken cancellationToken = default
     )
     {
-        var child = Children.FirstOrDefault(x => x.Actor == message.Process);
-        if (child == null)
+        using (Logger.BeginScope("{MessageType}", message.GetType()))
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            return;
-        }
+            Log.HandlingActorProcessStopped(Logger, message.Process.Actor.Context.Name);
 
-        await OnActorProcessStoppedAsync(child, message.Reason);
+            var child = Children.FirstOrDefault(x => x.Process == message.Process);
+            if (child == null)
+            {
+                Log.ChildNotFound(Logger, message.Process.Actor.Context.Name);
+                return;
+            }
+
+            await OnActorProcessStoppedAsync(
+                child,
+                message.Reason ?? TerminatedReason.Stopped,
+                cancellationToken
+            );
+        }
     }
 
     /// <summary>
@@ -199,6 +243,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         if (child.RestartPolicy == RestartPolicy.Temporary)
         {
+            Log.TemporaryActorFail(Logger, child.ActorType, child.Actor.Context.Name);
             await StopAsync(child);
             return;
         }
@@ -206,7 +251,19 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         ResetCounter(child);
 
         var action = ResolveFailureAction(child, exception);
-        if (action == FailureAction.Restart) { }
+        Log.ExecutingFailureAction(
+            Logger,
+            action,
+            child.ActorType,
+            child.Name,
+            child.RestartCount,
+            MaxRestarts
+        );
+
+        if (action == FailureAction.Restart)
+        {
+            await RestartAsync(child);
+        }
         else if (action == FailureAction.Stop)
         {
             await StopAsync(child);
@@ -254,6 +311,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>A task representing the stop operation.</returns>
     protected virtual async Task StopAsync(Child child)
     {
+        Log.StoppingChild(Logger, Strategy);
+
         if (Strategy == Strategy.OneForOne)
         {
             await StopActorAsync(child, TerminatedReason.Stopped);
@@ -262,18 +321,24 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         {
             await Task.WhenAll(Children.Select(x => StopActorAsync(x, TerminatedReason.Stopped)));
         }
+
+        Log.StoppingChild(Logger, Strategy);
     }
 
     /// <summary>
     /// Stops a single actor process and marks its reference as terminated.
     /// </summary>
-    /// <param name="metadata">The metadata of the actor to stop.</param>
+    /// <param name="child">The metadata of the actor to stop.</param>
     /// <param name="reason">The reason for termination.</param>
     /// <returns>A task representing the stop operation.</returns>
-    protected virtual async Task StopActorAsync(Child metadata, TerminatedReason reason)
+    protected virtual async Task StopActorAsync(Child child, TerminatedReason reason)
     {
-        await metadata.Process.KillAsync();
-        metadata.Actor.Context.Self.MarkAsTerminate(reason);
+        Log.StoppingActor(Logger, child.ActorType, child.Name);
+
+        await child.Process.KillAsync();
+        child.Actor.Context.Self.MarkAsTerminate(reason);
+
+        Log.ActorStopped(Logger, child.ActorType, child.Name);
     }
 
     /// <summary>
@@ -286,6 +351,14 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     [DoesNotReturn]
     protected virtual async Task EscalateAsync(Child child, IMessage message, Exception exception)
     {
+        Log.EscalingToParent(
+            Logger,
+            exception,
+            child.ActorType,
+            child.Name,
+            message.Payload.GetType()
+        );
+
         throw new EscalateFailureException(
             "Unable to handle actor failure",
             child.Reference,
@@ -301,7 +374,11 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>A task representing the resume operation.</returns>
     protected virtual async Task ResumeActorAsync(Child child)
     {
+        Log.ResumingActor(Logger, child.ActorType, child.Name);
+
         await child.Process.StartAsync();
+
+        Log.ActorResumed(Logger, child.ActorType, child.Name);
     }
 
     /// <summary>
@@ -311,8 +388,11 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>A task representing the restart operation.</returns>
     protected virtual async Task RestartAsync(Child child)
     {
+        Log.RestartingChild(Logger, Strategy);
+
         child.RestartCount++;
         child.LastRestartTime = DateTimeOffset.UtcNow;
+
         if (Strategy == Strategy.OneForOne)
         {
             await ResetActorAsync(child);
@@ -321,6 +401,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         {
             await Task.WhenAll(Children.Select(ResetActorAsync));
         }
+
+        Log.ChildRestarted(Logger, Strategy);
     }
 
     /// <summary>
@@ -330,6 +412,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>A task representing the reset operation.</returns>
     protected virtual async Task ResetActorAsync(Child child)
     {
+        Log.RestartingActor(Logger, child.ActorType, child.Name);
         var reference = child.Reference;
 
         await BeforeRestartActorAsync(child);
@@ -354,6 +437,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
             new TellMessage(new InitializeActor(), []),
             new TellMessage(new AfterRestartActor(), [])
         );
+
+        Log.ActorRestarted(Logger, child.ActorType, child.Name);
     }
 
     /// <summary>
@@ -366,9 +451,16 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         try
         {
+            Log.CallingBeforeRestartActor(Logger, child.ActorType, child.Name);
+
             await child.Actor.BeforeRestartAsync();
+
+            Log.BeforeRestartActorCalled(Logger, child.ActorType, child.Name);
         }
-        catch (Exception ex) { }
+        catch (Exception ex)
+        {
+            Log.ErrorToCallBeforeRestartActor(Logger, ex, child.ActorType, child.Name);
+        }
     }
 
     /// <summary>
@@ -391,6 +483,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         var now = DateTimeOffset.UtcNow;
         if ((now - child.LastRestartTime) > RestartWindow)
         {
+            Log.RestartCounterReset(Logger, child.ActorType, child.Name);
             child.RestartCount = 0;
         }
     }
@@ -402,6 +495,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>The metadata for the created child actor.</returns>
     protected virtual Child CreateActor(IChildSpecification specification)
     {
+        Log.CreatingActor(Logger, specification.ActorType.GetType(), specification.Name);
+
         var actor = ActorFactory.CreateActor(specification.ActorType);
         var process = new ActorProcess(
             actor,
@@ -429,10 +524,14 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>A task representing the start operation.</returns>
     protected virtual async Task StartActorAsync(Child child)
     {
+        Log.StartingActor(Logger, child.ActorType, child.Name);
+
         child.Process.Failed += OnActorProcessFailed;
         child.Process.Stopped += OnActorProcessStopped;
 
         await child.Process.StartAsync(new TellMessage(new InitializeActor(), []));
+
+        Log.ActorStarted(Logger, child.ActorType, child.Name);
     }
 
     /// <summary>
@@ -442,6 +541,14 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <param name="args">The failure event arguments.</param>
     protected virtual void OnActorProcessFailed(object? sender, ActorProcessFailedEvetArgs args)
     {
+        Log.ReceivedActorProcessFailed(
+            Logger,
+            args.Exception,
+            args.Message.GetType(),
+            args.Process.Actor.GetType(),
+            args.Process.Actor.Context.Name
+        );
+
         Context.Self.Tell(new ActorProcessFailed(args.Process, args.Message, args.Exception));
     }
 
@@ -452,6 +559,13 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <param name="args">The stopped event arguments.</param>
     protected virtual void OnActorProcessStopped(object? sender, ActorProcessStoppedEventArgs args)
     {
+        Log.ReceivedActorProcessStopped(
+            Logger,
+            args.Reason,
+            args.Process.Actor.GetType(),
+            args.Process.Actor.Context.Name
+        );
+
         Context.Self.Tell(new ActorProcessStopped(args.Process, args.Reason));
     }
 
@@ -471,10 +585,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         if (child.RestartPolicy == RestartPolicy.Permanent)
         {
+            Log.PermanentRestart(Logger, child.ActorType, child.Name);
             await ResetActorAsync(child);
         }
         else
         {
+            Log.NonPermanentRestart(Logger, child.ActorType, child.Name);
             await StopActorAsync(child, reason);
         }
     }
@@ -527,5 +643,194 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         }
 
         Children = [];
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(LogLevel.Debug, "Initializing supervisor")]
+        public static partial void InitializingSupervisor(ILogger logger);
+
+        [LoggerMessage(LogLevel.Debug, "Supervisor initialized")]
+        public static partial void SupervisoInitialized(ILogger logger);
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Before restart supervisor, going to dispose {ChildCount} children"
+        )]
+        public static partial void BeforeRestartSupervisor(ILogger logger, int childCount);
+
+        [LoggerMessage(LogLevel.Information, "Before restart supervisor completed")]
+        public static partial void BeforeRestartSupervisorCompleted(ILogger logger);
+
+        [LoggerMessage(LogLevel.Debug, "Hanlding {MessageType} message")]
+        public static partial void HandlingMessage(ILogger logger, Type? messageType);
+
+        [LoggerMessage(LogLevel.Debug, "{MessageType} message handled with sucess")]
+        public static partial void MessageHandled(ILogger logger, Type? messageType);
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Handling failed process for {FailedMessageType} message in {ActorName} actor"
+        )]
+        public static partial void HandlingActorProcessFailed(
+            ILogger logger,
+            Exception exception,
+            Type failedMessageType,
+            Uri actorName
+        );
+
+        [LoggerMessage(LogLevel.Error, "Child with {ActorName} name not found")]
+        public static partial void ChildNotFound(ILogger logger, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "Handling stopped process for {ActorName} actor")]
+        public static partial void HandlingActorProcessStopped(ILogger logger, Uri actorName);
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Temporary child actor failed, stopping {ActorType} with {ActorName} name"
+        )]
+        public static partial void TemporaryActorFail(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(LogLevel.Debug, "Reset restart counter for {ActorType} actor {ActorName}")]
+        public static partial void RestartCounterReset(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Going to apply {FailureAction} in {ActorType} for {ActorName} actor, restart count: {RestartCounter} / {MaxRestarts}"
+        )]
+        public static partial void ExecutingFailureAction(
+            ILogger logger,
+            FailureAction failureAction,
+            Type actorType,
+            Uri actorName,
+            int restartCounter,
+            int maxRestarts
+        );
+
+        [LoggerMessage(LogLevel.Information, "Stopping actor(s) with {Strategy}")]
+        public static partial void StoppingChild(ILogger logger, Strategy strategy);
+
+        [LoggerMessage(LogLevel.Information, "Stopped actor(s) with {Strategy}")]
+        public static partial void ChildStopped(ILogger logger, Strategy strategy);
+
+        [LoggerMessage(LogLevel.Information, "Stopping {ActorType} actor {ActorName}")]
+        public static partial void StoppingActor(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} stopped")]
+        public static partial void ActorStopped(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "Restarting actor(s) with {Strategy}")]
+        public static partial void RestartingChild(ILogger logger, Strategy strategy);
+
+        [LoggerMessage(LogLevel.Information, "Restarted actor(s) with {Strategy}")]
+        public static partial void ChildRestarted(ILogger logger, Strategy strategy);
+
+        [LoggerMessage(LogLevel.Information, "Restarting {ActorType} actor {ActorName}")]
+        public static partial void RestartingActor(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} Restarted")]
+        public static partial void ActorRestarted(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Debug, "Calling Before Restart {ActorType} actor {ActorName}")]
+        public static partial void CallingBeforeRestartActor(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(LogLevel.Debug, "Called Before Restart {ActorType} actor {ActorName}")]
+        public static partial void BeforeRestartActorCalled(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Error,
+            "Error during calling Before Restart {ActorType} actor {ActorName}"
+        )]
+        public static partial void ErrorToCallBeforeRestartActor(
+            ILogger logger,
+            Exception exception,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Escalating error to parent, source of error {ActorType} actor {ActorName} with {SourceMessageType}"
+        )]
+        public static partial void EscalingToParent(
+            ILogger logger,
+            Exception ex,
+            Type actorType,
+            Uri actorName,
+            Type sourceMessageType
+        );
+
+        [LoggerMessage(LogLevel.Information, "Resuming {ActorType} actor {ActorName}")]
+        public static partial void ResumingActor(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} resumed")]
+        public static partial void ActorResumed(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Creating actor with {ActorType} type and {ActorName} name"
+        )]
+        public static partial void CreatingActor(ILogger logger, Type actorType, string actorName);
+
+        [LoggerMessage(LogLevel.Information, "Starting {ActorType} actor {ActorName}")]
+        public static partial void StartingActor(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "Started {ActorType} actor {ActorName}")]
+        public static partial void ActorStarted(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Received acttor process failed with {FailedMessageType} for {ActorType} actor {ActorName}"
+        )]
+        public static partial void ReceivedActorProcessFailed(
+            ILogger logger,
+            Exception exception,
+            Type failedMessageType,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Received acttor process stopped with {StoppedReason} for {ActorType} actor {ActorName}"
+        )]
+        public static partial void ReceivedActorProcessStopped(
+            ILogger logger,
+            TerminatedReason stoppedReason,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Permanent restart policy going to be apply for {ActorType} actor {ActorName}"
+        )]
+        public static partial void PermanentRestart(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Non-permanent child actor stopped for {ActorType} actor {ActorName}"
+        )]
+        public static partial void NonPermanentRestart(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
     }
 }

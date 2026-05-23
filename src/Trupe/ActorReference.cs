@@ -70,7 +70,7 @@ public class ActorReference : IActorReference, IDisposable
     /// <inheritdoc />
     public TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         TimeSpan? timeout = null
     )
     {
@@ -89,7 +89,7 @@ public class ActorReference : IActorReference, IDisposable
     /// <inheritdoc />
     public Task<TResponse> AskAsync<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {
@@ -103,7 +103,11 @@ public class ActorReference : IActorReference, IDisposable
     }
 
     /// <inheritdoc />
-    public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
+    public void Tell(
+        object message,
+        Dictionary<string, object?>? metadata,
+        TimeSpan? timeout = null
+    )
     {
         _inner.Tell(message, metadata, timeout);
     }
@@ -117,7 +121,7 @@ public class ActorReference : IActorReference, IDisposable
     /// <inheritdoc />
     public ValueTask TellAsync(
         object message,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {
