@@ -6,7 +6,6 @@ using Trupe.Abstractions;
 using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
-using Trupe.Factories;
 using Trupe.Pipelines;
 using Trupe.Pipelines.Middlewares;
 

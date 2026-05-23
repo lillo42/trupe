@@ -70,7 +70,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
 
     /// <summary>
     /// Registers a death watch on the specified actor reference. When the watched actor terminates,
-    /// a <see cref="Terminated"/> message is sent to this actor.
+    /// a <see cref="ActorTerminated"/> message is sent to this actor.
     /// </summary>
     /// <param name="reference">The actor reference to watch.</param>
     public void DeathWatch(IActorReference reference)
@@ -107,6 +107,6 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
 
     private void OnDeathWatch(object? sender, ActorReferenceTerminatedEventArgs args)
     {
-        Self.Tell(new Terminated(args.Reference, TerminatedReason.Stopped));
+        Self.Tell(new ActorTerminated(args.Reference, TerminatedReason.Stopped));
     }
 }

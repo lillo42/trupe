@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
 
-namespace Trupe.Factories;
+namespace Trupe;
 
 /// <summary>
 /// An <see cref="IActorFactory"/> implementation that resolves actor instances from the dependency injection container.

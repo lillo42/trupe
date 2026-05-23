@@ -13,7 +13,7 @@ using Trupe.Pipelines;
 
 namespace Trupe.Tests;
 
-public class ActorReferenceProxyProcessorTests
+public class ActorReferenceProxyProcessorTest
 {
     [Test]
     public async Task Ask_Should_BeExecutedWithSucess()

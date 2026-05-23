@@ -5,4 +5,4 @@ namespace Trupe.Abstractions.SystemMessages;
 /// </summary>
 /// <param name="Reference">The actor reference that was terminated.</param>
 /// <param name="Reason">The reason for the termination.</param>
-public record Terminated(IActorReference Reference, TerminatedReason Reason);
+public record ActorTerminated(IActorReference Reference, TerminatedReason Reason);
