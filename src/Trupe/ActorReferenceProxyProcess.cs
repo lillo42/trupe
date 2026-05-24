@@ -34,8 +34,9 @@ public class ActorReferenceProxyProcessor(
     IServiceProvider provider
 ) : IActorReference, IDisposable
 {
-    private bool _isDisposed;
     private readonly ActorReferenceListenerCollection _collection = [];
+
+    private bool _isDisposed;
 
     /// <inheritdoc />
     public Uri Name => name;
@@ -116,8 +117,7 @@ public class ActorReferenceProxyProcessor(
             cts.CancelAfter(timeout.Value);
         }
 
-        var val = TellAsync(message, metadata, cts.Token);
-        val.GetAwaiter().GetResult();
+        TellAsync(message, metadata, cts.Token).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
@@ -156,7 +156,7 @@ public class ActorReferenceProxyProcessor(
             this,
             actorType,
             message,
-            [new ActorProcessMetadata(registry.Get(this))],
+            [new ActorProcessMetadata(registry.GetProcess(this))],
             cancellationToken
         );
 
@@ -198,7 +198,7 @@ public class ActorReferenceProxyProcessor(
         var sp = scope.ServiceProvider;
 
         var registry = sp.GetRequiredService<IActorProcessRegistry>();
-        var process = registry.Get(this);
+        var process = registry.GetProcess(this);
         await process.KillAsync();
     }
 
@@ -235,7 +235,7 @@ public class ActorReferenceProxyProcessor(
             var sp = scope.ServiceProvider;
 
             var registry = sp.GetRequiredService<IActorProcessRegistry>();
-            registry.Remove(this);
+            registry.UnRegister(this);
         }
 
         _isDisposed = true;

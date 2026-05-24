@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Exceptions;
 
 namespace Trupe;
 
@@ -27,20 +28,20 @@ public class ActorProcessRegistry : IActorProcessRegistry
     }
 
     /// <inheritdoc />
-    public IActorProcess Get(IActorReference reference)
+    public IActorProcess GetProcess(IActorReference reference)
     {
         if (_pids.TryGetValue(reference.Name, out var registery))
         {
             return registery.process;
         }
 
-        throw new System.Exception();
+        throw new ActorProcessNotRegisterException(reference);
     }
 
     /// <inheritdoc />
-    public void Remove(IActorReference pid)
+    public void UnRegister(IActorReference reference)
     {
-        _pids.TryRemove(pid.Name, out _);
+        _pids.TryRemove(reference.Name, out _);
     }
 
     /// <inheritdoc />

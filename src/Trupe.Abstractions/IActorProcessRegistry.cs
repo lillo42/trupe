@@ -14,6 +14,8 @@ public interface IActorProcessRegistry
     /// <param name="process">The actor process associated with the reference.</param>
     void Register(IActorReference reference, IActorProcess process);
 
+    void UnRegister(IActorReference reference);
+
     /// <summary>
     /// Gets an actor reference by its URI. Returns a dead letter reference if not found.
     /// </summary>
@@ -21,16 +23,5 @@ public interface IActorProcessRegistry
     /// <returns>The actor reference, or a dead letter reference if not found.</returns>
     IActorReference GetReference(Uri reference);
 
-    /// <summary>
-    /// Gets the actor process associated with the specified actor reference.
-    /// </summary>
-    /// <param name="reference">The actor reference to look up.</param>
-    /// <returns>The actor process associated with the reference.</returns>
-    IActorProcess Get(IActorReference reference);
-
-    /// <summary>
-    /// Removes the specified actor reference and its associated process from the registry.
-    /// </summary>
-    /// <param name="reference">The actor reference to remove.</param>
-    void Remove(IActorReference reference);
+    IActorProcess GetProcess(IActorReference reference);
 }

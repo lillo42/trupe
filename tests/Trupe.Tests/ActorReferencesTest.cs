@@ -155,20 +155,32 @@ public class ActorReferences
     }
 
     [Test]
-    public async Task Terminated_Should_RaiseEvenInnerRefRaiseEvent()
+    public async Task Register_Should_InvokeTheListener_When_OnTerminatedIsCalled()
     {
+        var listener = Substitute.For<IActorReferenceListener>();
         var inner = Substitute.For<IActorReference>();
         var @ref = new ActorReference(inner);
 
-        var invoked = false;
-        @ref.Terminated += (_, _) => invoked = true;
+        @ref.Register(listener);
+        @ref.OnTerminated(inner, TerminatedReason.Stopped);
 
-        inner.Terminated += Raise.EventWith(
-            new object(),
-            new ActorReferenceTerminatedEventArgs(inner, TerminatedReason.Stopped)
-        );
+        listener.Received(1).OnTerminated(Arg.Is(@ref), TerminatedReason.Stopped);
+    }
 
-        await Assert.That(invoked).IsTrue();
+    [Test]
+    public async Task UnRegister_Should_NotInvokeTheListener_When_OnTerminatedIsCalled()
+    {
+        var listener = Substitute.For<IActorReferenceListener>();
+        var inner = Substitute.For<IActorReference>();
+        var @ref = new ActorReference(inner);
+
+        @ref.Register(listener);
+        @ref.UnRegister(listener);
+        @ref.OnTerminated(inner, TerminatedReason.Stopped);
+
+        listener
+            .DidNotReceive()
+            .OnTerminated(Arg.Any<IActorReference>(), Arg.Any<TerminatedReason>());
     }
 
     public record SomeRequest();

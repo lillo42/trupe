@@ -144,7 +144,7 @@ public class ActorReferenceProxyProcessorTest
         serviceProvider.GetService(typeof(IActorProcessRegistry)).Returns(registry);
 
         var process = Substitute.For<IActorProcess>();
-        registry.Get(Arg.Any<IActorReference>()).Returns(process);
+        registry.GetProcess(Arg.Any<IActorReference>()).Returns(process);
 
         var @ref = new ActorReferenceProxyProcessor(
             new Uri("trup://localhost/123"),
@@ -186,20 +186,40 @@ public class ActorReferenceProxyProcessorTest
     }
 
     [Test]
-    public async Task Terminate_Should_RaiseEvent()
+    public async Task Register_Should_InvokeTheListener_When_MarkAsTerminateIsCalled()
     {
+        var listener = Substitute.For<IActorReferenceListener>();
         var @ref = new ActorReferenceProxyProcessor(
             new Uri("trup://localhost/123"),
             typeof(SomeActor),
             Substitute.For<IServiceProvider>()
         );
 
-        var invoked = false;
-        @ref.Terminated += (_, _) => invoked = true;
+        @ref.Register(listener);
 
         @ref.MarkAsTerminate(TerminatedReason.Stopped);
 
-        await Assert.That(invoked).IsTrue();
+        listener.Received(1).OnTerminated(Arg.Is(@ref), Arg.Is(TerminatedReason.Stopped));
+    }
+
+    [Test]
+    public async Task UnRegister_Should_NotInvokeTheListener_When_MarkAsTerminateIsCalled()
+    {
+        var listener = Substitute.For<IActorReferenceListener>();
+        var @ref = new ActorReferenceProxyProcessor(
+            new Uri("trup://localhost/123"),
+            typeof(SomeActor),
+            Substitute.For<IServiceProvider>()
+        );
+
+        @ref.Register(listener);
+        @ref.UnRegister(listener);
+
+        @ref.MarkAsTerminate(TerminatedReason.Stopped);
+
+        listener
+            .DidNotReceive()
+            .OnTerminated(Arg.Any<IActorReference>(), Arg.Any<TerminatedReason>());
     }
 
     [Test]

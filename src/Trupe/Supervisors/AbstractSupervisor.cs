@@ -648,7 +648,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
             foreach (var child in Children)
             {
-                registry.Remove(child.Actor.Context.Self);
+                registry.UnRegister(child.Actor.Context.Self);
 
                 var ctx = child.Actor.Context;
                 await DisposeObjectAsync(child.Process);

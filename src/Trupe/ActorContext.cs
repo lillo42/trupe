@@ -80,6 +80,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     public async ValueTask DisposeAsync()
     {
         await DisposeAsync(true);
+
         GC.SuppressFinalize(this);
     }
 
