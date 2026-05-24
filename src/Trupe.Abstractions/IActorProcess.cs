@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 
@@ -12,16 +11,6 @@ namespace Trupe.Abstractions;
 /// </summary>
 public interface IActorProcess
 {
-    /// <summary>
-    /// Occurs when the actor process encounters an unhandled exception during message processing.
-    /// </summary>
-    event EventHandler<ActorProcessFailedEvetArgs> Failed;
-
-    /// <summary>
-    /// Occurs when the actor process is stopped, either gracefully or due to a stop message.
-    /// </summary>
-    event EventHandler<ActorProcessStoppedEventArgs> Stopped;
-
     /// <summary>
     /// Gets or sets the actor instance managed by this process.
     /// </summary>
@@ -45,4 +34,8 @@ public interface IActorProcess
     /// </summary>
     /// <returns>A task representing the kill operation.</returns>
     Task KillAsync();
+
+    IDisposable Register(IActorProcessListener listing);
+
+    void UnRegister(IActorProcessListener listing);
 }

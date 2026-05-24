@@ -5,11 +5,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
+using Trupe.Collections;
+using Trupe.Guards;
 using Trupe.Messages;
 using Trupe.Pipelines;
 
@@ -33,11 +34,11 @@ public class ActorReferenceProxyProcessor(
     IServiceProvider provider
 ) : IActorReference, IDisposable
 {
-    /// <inheritdoc />
-    public Uri Name => name;
+    private bool _isDisposed;
+    private readonly ActorReferenceListenerCollection _collection = [];
 
     /// <inheritdoc />
-    public event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
+    public Uri Name => name;
 
     /// <inheritdoc />
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
@@ -52,6 +53,8 @@ public class ActorReferenceProxyProcessor(
         TimeSpan? timeout = null
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         using var cts = new CancellationTokenSource();
         if (timeout.HasValue)
         {
@@ -78,6 +81,8 @@ public class ActorReferenceProxyProcessor(
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         var actorMessage = new AskMessage(request, metadata ?? [], cancellationToken);
         await ExecuteAsync(actorMessage, cancellationToken);
 
@@ -103,6 +108,8 @@ public class ActorReferenceProxyProcessor(
         TimeSpan? timeout = null
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         using var cts = new CancellationTokenSource();
         if (timeout.HasValue)
         {
@@ -126,6 +133,8 @@ public class ActorReferenceProxyProcessor(
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         var actorMessage = new TellMessage(message, metadata ?? [], CancellationToken.None);
         await ExecuteAsync(actorMessage, cancellationToken);
     }
@@ -167,18 +176,24 @@ public class ActorReferenceProxyProcessor(
     /// <inheritdoc />
     public void Stop()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         Tell(new Stop());
     }
 
     /// <inheritdoc />
     public async Task StopAsync()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         await AskAsync<object?>(new Stop());
     }
 
     /// <inheritdoc />
     public async Task KillAsync()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
         await using var scope = provider.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
@@ -190,7 +205,9 @@ public class ActorReferenceProxyProcessor(
     /// <inheritdoc />
     public void MarkAsTerminate(TerminatedReason reason)
     {
-        Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, reason));
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
+        _collection.InvokeOnTerminated(this, reason);
     }
 
     /// <summary>
@@ -198,12 +215,43 @@ public class ActorReferenceProxyProcessor(
     /// </summary>
     public void Dispose()
     {
+        Dispose(true);
+
         GC.SuppressFinalize(this);
+    }
 
-        using var scope = provider.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
+    private void Dispose(bool disposing)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
 
-        var registry = sp.GetRequiredService<IActorProcessRegistry>();
-        registry.Remove(this);
+        if (disposing)
+        {
+            _collection.Clear();
+
+            using var scope = provider.CreateAsyncScope();
+            var sp = scope.ServiceProvider;
+
+            var registry = sp.GetRequiredService<IActorProcessRegistry>();
+            registry.Remove(this);
+        }
+
+        _isDisposed = true;
+    }
+
+    public IDisposable Register(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
+        return _collection.Add(listener);
+    }
+
+    public void UnRegister(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
+
+        _collection.Remove(listener);
     }
 }

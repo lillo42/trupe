@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
+using Trupe.Collections;
+using Trupe.Guards;
 
 namespace Trupe;
 
@@ -11,9 +12,11 @@ namespace Trupe;
 /// A decorator around an <see cref="IActorReference"/> that resolves references via the actor process registry.
 /// Supports creating references by name or URI for lookup-based resolution.
 /// </summary>
-public class ActorReference : IActorReference, IDisposable
+public class ActorReference : IActorReference, IDisposable, IActorReferenceListener
 {
+    private bool _isDisposed;
     private readonly IActorReference _inner;
+    private readonly ActorReferenceListenerCollection _collection;
 
     /// <summary>
     /// Creates a new actor reference wrapping the specified inner reference.
@@ -21,8 +24,10 @@ public class ActorReference : IActorReference, IDisposable
     /// <param name="inner">The inner actor reference to delegate to.</param>
     public ActorReference(IActorReference inner)
     {
+        _collection = [];
+
         _inner = inner;
-        _inner.Terminated += OnTerminated;
+        _inner.Register(this);
     }
 
     /// <summary>
@@ -59,11 +64,10 @@ public class ActorReference : IActorReference, IDisposable
     public Uri Name => _inner.Name;
 
     /// <inheritdoc />
-    public event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
-
-    /// <inheritdoc />
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.Ask<TResponse>(request, timeout);
     }
 
@@ -74,6 +78,8 @@ public class ActorReference : IActorReference, IDisposable
         TimeSpan? timeout = null
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.Ask<TResponse>(request, metadata, timeout);
     }
 
@@ -83,6 +89,8 @@ public class ActorReference : IActorReference, IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.AskAsync<TResponse>(request, cancellationToken);
     }
 
@@ -93,12 +101,16 @@ public class ActorReference : IActorReference, IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.AskAsync<TResponse>(request, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
     public void Tell(object message, TimeSpan? timeout = null)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         _inner.Tell(message, timeout);
     }
 
@@ -109,6 +121,8 @@ public class ActorReference : IActorReference, IDisposable
         TimeSpan? timeout = null
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         _inner.Tell(message, metadata, timeout);
     }
 
@@ -125,41 +139,84 @@ public class ActorReference : IActorReference, IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.TellAsync(message, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        _inner.Terminated -= OnTerminated;
+        Dispose(true);
+
+        GC.SuppressFinalize(this);
     }
 
-    private void OnTerminated(object? sender, ActorReferenceTerminatedEventArgs args)
+    protected virtual void Dispose(bool disposing)
     {
-        Terminated?.Invoke(this, new ActorReferenceTerminatedEventArgs(this, args.Reason));
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _collection.Clear();
+        }
+
+        _isDisposed = true;
     }
 
     /// <inheritdoc />
     public void Stop()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         _inner.Stop();
     }
 
     /// <inheritdoc />
     public async Task StopAsync()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         await _inner.StopAsync();
     }
 
     /// <inheritdoc />
     public Task KillAsync()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         return _inner.KillAsync();
     }
 
     /// <inheritdoc />
     public void MarkAsTerminate(TerminatedReason reason)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
         _inner.MarkAsTerminate(reason);
+    }
+
+    public IDisposable Register(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        return _collection.Add(listener);
+    }
+
+    public void UnRegister(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        _collection.Remove(listener);
+    }
+
+    public void OnTerminated(IActorReference reference, TerminatedReason reason)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        _collection.InvokeOnTerminated(this, reason);
     }
 }

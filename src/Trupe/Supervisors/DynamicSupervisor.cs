@@ -44,9 +44,6 @@ public abstract class DynamicSupervisor(ILogger logger)
         {
             Children = Children.Remove(child);
 
-            child.Process.Failed -= OnActorProcessFailed;
-            child.Process.Stopped -= OnActorProcessStopped;
-
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Process);
             await DisposeObjectAsync(child.Actor);
@@ -74,9 +71,6 @@ public abstract class DynamicSupervisor(ILogger logger)
         {
             Children = Children.Remove(child);
 
-            child.Process.Failed -= OnActorProcessFailed;
-            child.Process.Stopped -= OnActorProcessStopped;
-
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Process);
             await DisposeObjectAsync(child.Actor);
@@ -101,9 +95,6 @@ public abstract class DynamicSupervisor(ILogger logger)
         if (child.RestartPolicy != RestartPolicy.Permanent)
         {
             Children = Children.Remove(child);
-
-            child.Process.Failed -= OnActorProcessFailed;
-            child.Process.Stopped -= OnActorProcessStopped;
 
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Process);

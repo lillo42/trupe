@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 
 namespace Trupe.Tests;
 

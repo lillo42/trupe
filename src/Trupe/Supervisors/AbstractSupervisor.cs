@@ -8,13 +8,13 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Abstractions.Supervisors.Commands;
 using Trupe.Abstractions.SystemMessages;
+using Trupe.Guards;
 using Trupe.Messages;
 
 namespace Trupe.Supervisors;
@@ -30,8 +30,13 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         ISupervisor,
         IHandleActorMessage<ActorProcessFailed>,
         IHandleActorMessage<ActorProcessStopped>,
+        IActorProcessListener,
         IAsyncDisposable
 {
+    private bool _isDisposed;
+
+    protected virtual bool IsDisposed => _isDisposed;
+
     /// <summary>
     /// Gets the logger used for supervisor operations.
     /// </summary>
@@ -78,6 +83,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// </remarks>
     public override async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
             Log.InitializingSupervisor(Logger);
@@ -103,13 +110,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         Log.BeforeRestartSupervisor(Logger, Children.Count);
 
         foreach (var child in Children)
         {
-            child.Process.Failed -= OnActorProcessFailed;
-            child.Process.Stopped -= OnActorProcessStopped;
-
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Actor);
             await DisposeObjectAsync(ctx);
@@ -135,6 +141,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         Log.HandlingMessage(Logger, message?.GetType());
 
         if (message is ActorProcessFailed failed)
@@ -168,6 +176,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         using (Logger.BeginScope("{MessageType}", message.GetType()))
         using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
@@ -205,6 +215,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         using (Logger.BeginScope("{MessageType}", message.GetType()))
         using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
@@ -241,6 +253,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         CancellationToken cancellationToken
     )
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         if (child.RestartPolicy == RestartPolicy.Temporary)
         {
             Log.TemporaryActorFail(Logger, child.ActorType, child.Actor.Context.Name);
@@ -495,6 +509,8 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// <returns>The metadata for the created child actor.</returns>
     protected virtual Child CreateActor(IChildSpecification specification)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         Log.CreatingActor(Logger, specification.ActorType.GetType(), specification.Name);
 
         var actor = ActorFactory.CreateActor(specification.ActorType);
@@ -526,47 +542,40 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         Log.StartingActor(Logger, child.ActorType, child.Name);
 
-        child.Process.Failed += OnActorProcessFailed;
-        child.Process.Stopped += OnActorProcessStopped;
+        child.Process.Register(this);
 
         await child.Process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         Log.ActorStarted(Logger, child.ActorType, child.Name);
     }
 
-    /// <summary>
-    /// Handles failure events from child actor processes by forwarding them as messages to the supervisor.
-    /// </summary>
-    /// <param name="sender">The source of the event.</param>
-    /// <param name="args">The failure event arguments.</param>
-    protected virtual void OnActorProcessFailed(object? sender, ActorProcessFailedEvetArgs args)
+    public virtual void OnFailed(IActorProcess process, IMessage message, Exception exception)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         Log.ReceivedActorProcessFailed(
             Logger,
-            args.Exception,
-            args.Message.GetType(),
-            args.Process.Actor.GetType(),
-            args.Process.Actor.Context.Name
+            exception,
+            message.GetType(),
+            process.Actor.GetType(),
+            process.Actor.Context.Name
         );
 
-        Context.Self.Tell(new ActorProcessFailed(args.Process, args.Message, args.Exception));
+        Context.Self.Tell(new ActorProcessFailed(process, message, exception));
     }
 
-    /// <summary>
-    /// Handles stopped events from child actor processes by forwarding them as messages to the supervisor.
-    /// </summary>
-    /// <param name="sender">The source of the event.</param>
-    /// <param name="args">The stopped event arguments.</param>
-    protected virtual void OnActorProcessStopped(object? sender, ActorProcessStoppedEventArgs args)
+    public virtual void OnStopped(IActorProcess process, TerminatedReason reason)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
         Log.ReceivedActorProcessStopped(
             Logger,
-            args.Reason,
-            args.Process.Actor.GetType(),
-            args.Process.Actor.Context.Name
+            reason,
+            process.Actor.GetType(),
+            process.Actor.Context.Name
         );
 
-        Context.Self.Tell(new ActorProcessStopped(args.Process, args.Reason));
+        Context.Self.Tell(new ActorProcessStopped(process, reason));
     }
 
     /// <summary>
@@ -620,29 +629,41 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// </remarks>
     public virtual async ValueTask DisposeAsync()
     {
+        await DisposeAsync(true);
+
         GC.SuppressFinalize(this);
+    }
 
-        await using var sp = Context.ServiceProvider.CreateAsyncScope();
-        var registry = sp.ServiceProvider.GetRequiredService<IActorProcessRegistry>();
-
-        foreach (var child in Children)
+    protected virtual async ValueTask DisposeAsync(bool disposing)
+    {
+        if (_isDisposed)
         {
-            registry.Remove(child.Actor.Context.Self);
-
-            child.Process.Failed -= OnActorProcessFailed;
-            child.Process.Stopped -= OnActorProcessStopped;
-
-            var ctx = child.Actor.Context;
-            await DisposeObjectAsync(child.Process);
-            await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(ctx);
-
-            child.Actor = null!;
-            child.Process = null!;
-            child.Metadata.Clear();
+            return;
         }
 
-        Children = [];
+        if (disposing)
+        {
+            await using var sp = Context.ServiceProvider.CreateAsyncScope();
+            var registry = sp.ServiceProvider.GetRequiredService<IActorProcessRegistry>();
+
+            foreach (var child in Children)
+            {
+                registry.Remove(child.Actor.Context.Self);
+
+                var ctx = child.Actor.Context;
+                await DisposeObjectAsync(child.Process);
+                await DisposeObjectAsync(child.Actor);
+                await DisposeObjectAsync(ctx);
+
+                child.Actor = null!;
+                child.Process = null!;
+                child.Metadata.Clear();
+            }
+
+            Children = [];
+        }
+
+        _isDisposed = true;
     }
 
     private static partial class Log

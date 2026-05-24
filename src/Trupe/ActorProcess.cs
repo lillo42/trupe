@@ -5,12 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
+using Trupe.Collections;
+using Trupe.Guards;
 
 namespace Trupe;
 
@@ -28,19 +29,11 @@ namespace Trupe;
 /// </remarks>
 public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyncDisposable
 {
+    private readonly ActorProcessListenerCollection _collection = [];
+
+    private bool _isDisposed;
     private CancellationTokenSource? _cts;
-
     private Task? _executing;
-
-    /// <summary>
-    /// Occurs when the actor process encounters an unhandled exception during message processing.
-    /// </summary>
-    public event EventHandler<ActorProcessFailedEvetArgs>? Failed;
-
-    /// <summary>
-    /// Occurs when the actor process is stopped gracefully via a <see cref="Stop"/> message.
-    /// </summary>
-    public event EventHandler<ActorProcessStoppedEventArgs>? Stopped;
 
     /// <inheritdoc />
     public IMailbox Mailbox { get; set; } = mailbox;
@@ -51,6 +44,8 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
     /// <inheritdoc />
     public async Task StartAsync(params IMessage[] messages)
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
         await KillAsync();
 
         _cts = new CancellationTokenSource();
@@ -70,6 +65,8 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
     /// <inheritdoc />
     public async Task KillAsync()
     {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
         if (
             _cts == null
             || _executing == null
@@ -137,10 +134,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
 
             if (message.Payload is Stop)
             {
-                Stopped?.Invoke(
-                    this,
-                    new ActorProcessStoppedEventArgs(this, TerminatedReason.Stopped)
-                );
+                _collection.InvokeOnStopped(this, TerminatedReason.Stopped);
                 return;
             }
         }
@@ -196,7 +190,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         }
         catch (Exception ex)
         {
-            Failed?.Invoke(this, new ActorProcessFailedEvetArgs(this, message, ex));
+            _collection.InvokeOnFailed(this, message, ex);
             throw;
         }
         finally
@@ -256,11 +250,38 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
+        DisposeAsync(true);
+
         GC.SuppressFinalize(this);
+    }
 
-        await KillAsync();
+    private async ValueTask DisposeAsync(bool disposing)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
 
-        Failed = null;
-        Stopped = null;
+        if (disposing)
+        {
+            _collection.Clear();
+            await KillAsync();
+        }
+
+        _isDisposed = true;
+    }
+
+    public IDisposable Register(IActorProcessListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
+        return _collection.Add(listener);
+    }
+
+    public void UnRegister(IActorProcessListener listing)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
+        _collection.Remove(listing);
     }
 }

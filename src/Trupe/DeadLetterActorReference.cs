@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 
 namespace Trupe;
 
@@ -16,9 +15,6 @@ public class DeadLetterActorReference(Uri name) : IActorReference
 {
     /// <inheritdoc />
     public Uri Name => name;
-
-    /// <inheritdoc />
-    public event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
 
     /// <inheritdoc />
     public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
@@ -67,6 +63,11 @@ public class DeadLetterActorReference(Uri name) : IActorReference
         throw new NotImplementedException();
     }
 
+    public IDisposable Register(IActorReferenceListener listener)
+    {
+        throw new NotImplementedException();
+    }
+
     /// <inheritdoc />
     public void Stop()
     {
@@ -103,6 +104,11 @@ public class DeadLetterActorReference(Uri name) : IActorReference
         Dictionary<string, object>? metadata,
         CancellationToken cancellationToken = default
     )
+    {
+        throw new NotImplementedException();
+    }
+
+    public void UnRegister(IActorReferenceListener listener)
     {
         throw new NotImplementedException();
     }

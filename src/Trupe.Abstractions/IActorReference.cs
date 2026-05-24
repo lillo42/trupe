@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Trupe.Abstractions.Events;
 
 namespace Trupe.Abstractions;
 
@@ -16,11 +15,6 @@ public interface IActorReference
     /// Gets the unique URI identifying this actor.
     /// </summary>
     Uri Name { get; }
-
-    /// <summary>
-    /// Occurs when the actor reference is terminated.
-    /// </summary>
-    event EventHandler<ActorReferenceTerminatedEventArgs>? Terminated;
 
     /// <summary>
     /// Sends a stop message to the actor using fire-and-forget semantics.
@@ -191,4 +185,8 @@ public interface IActorReference
         Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     );
+
+    IDisposable Register(IActorReferenceListener listener);
+
+    void UnRegister(IActorReferenceListener listener);
 }

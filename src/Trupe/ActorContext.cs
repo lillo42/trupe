@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.SystemMessages;
+using Trupe.Extensions;
+using Trupe.Guards;
 
 namespace Trupe;
 
@@ -25,8 +26,13 @@ namespace Trupe;
 /// <param name="Scope">The DI scope associated with this context. Disposed when the context is disposed.</param>
 public record ActorContext(IActorReference Self, IServiceScope Scope)
     : IActorContext,
+        IActorReferenceListener,
         IAsyncDisposable
 {
+    private readonly Dictionary<IActorReference, IDisposable> _deathWatch = [];
+
+    private bool _isDisposed;
+
     /// <summary>
     /// Initializes a new <see cref="ActorContext"/> with pre-existing metadata entries.
     /// </summary>
@@ -69,44 +75,64 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     public Uri Name => Self.Name;
 
     /// <summary>
-    /// Registers a death watch on the specified actor reference. When the watched actor terminates,
-    /// a <see cref="ActorTerminated"/> message is sent to this actor.
-    /// </summary>
-    /// <param name="reference">The actor reference to watch.</param>
-    public void DeathWatch(IActorReference reference)
-    {
-        reference.Terminated += OnDeathWatch;
-    }
-
-    /// <summary>
     /// Asynchronously disposes the associated DI scope.
     /// </summary>
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await DisposeAsync(true);
         GC.SuppressFinalize(this);
+    }
 
-        if (Scope is IAsyncDisposable asyncDisposable)
+    private async ValueTask DisposeAsync(bool disposing)
+    {
+        if (_isDisposed)
         {
-            return asyncDisposable.DisposeAsync();
+            return;
         }
-        else
+
+        if (disposing)
         {
-            Scope.Dispose();
-            return new ValueTask();
+            _deathWatch.ForEach(x => x.Value.Dispose());
+            _deathWatch.Clear();
+            if (Scope is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else
+            {
+                Scope.Dispose();
+            }
+        }
+
+        _isDisposed = true;
+    }
+
+    public void OnTerminated(IActorReference reference, TerminatedReason reason)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
+
+        Self.Tell(new ActorTerminated(reference, reason));
+    }
+
+    public void DeathWatch(IActorReference reference)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
+
+        if (!_deathWatch.ContainsKey(reference))
+        {
+            _deathWatch.Add(reference, reference.Register(this));
         }
     }
 
-    /// <summary>
-    /// Unregisters a death watch on the specified actor reference.
-    /// </summary>
-    /// <param name="reference">The actor reference to stop watching.</param>
     public void UnWatchDeath(IActorReference reference)
     {
-        reference.Terminated -= OnDeathWatch;
-    }
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
 
-    private void OnDeathWatch(object? sender, ActorReferenceTerminatedEventArgs args)
-    {
-        Self.Tell(new ActorTerminated(args.Reference, TerminatedReason.Stopped));
+        if (_deathWatch.TryGetValue(reference, out var disposable))
+        {
+            _deathWatch.Remove(reference);
+
+            disposable.Dispose();
+        }
     }
 }

@@ -2,7 +2,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.SystemMessages;
 
 namespace Trupe.Tests;
