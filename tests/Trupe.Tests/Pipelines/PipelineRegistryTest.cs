@@ -11,7 +11,7 @@ namespace Trupe.Tests.Pipelines;
 public class PipelineRegistryTest
 {
     [Test]
-    public async Task GetMiddlewares()
+    public async Task GetMiddlewares_Should_ReturnTheCorrectMiddlawresBaseOnActorTypeAndMessage()
     {
         var opt = new PipelineOptions();
         opt.Middlewares.Add(
