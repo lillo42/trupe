@@ -9,12 +9,14 @@ namespace Trupe.Extensions.Hosting.Tests;
 public class ActorSystemHostedServiceTest
 {
     [Test]
-    [SkipOnNativeAot]
     public async Task StartAsync_Should_StartActorSystem()
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
         var service = new ActorSystemHostedService(actorSystem);
 
         // Act
@@ -26,12 +28,14 @@ public class ActorSystemHostedServiceTest
     }
 
     [Test]
-    [SkipOnNativeAot]
     public async Task StopAsync_Should_StopActorSystem()
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
         var service = new ActorSystemHostedService(actorSystem);
         await service.StartAsync(CancellationToken.None);
 
@@ -48,7 +52,10 @@ public class ActorSystemHostedServiceTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
         var service = new ActorSystemHostedService(actorSystem);
 
         // Act & Assert - should not throw
@@ -60,7 +67,10 @@ public class ActorSystemHostedServiceTest
     {
         // Arrange
         var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(rootSupervisor, new ServiceCollection().BuildServiceProvider());
+        var actorSystem = new ActorSystem(
+            rootSupervisor,
+            new ServiceCollection().BuildServiceProvider()
+        );
         var service = new ActorSystemHostedService(actorSystem);
 
         // Act

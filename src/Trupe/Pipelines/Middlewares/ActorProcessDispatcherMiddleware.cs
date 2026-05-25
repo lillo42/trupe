@@ -18,5 +18,7 @@ public class ActorProcessDispatcherMiddleware : ISendMiddleware
     {
         var process = context.Metadata.GetRequiredMetadata<ActorProcessMetadata>().Process;
         await process.Mailbox.EnqueueAsync(context.Message, context.CancellationToken);
+
+        await next(context);
     }
 }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using Trupe.Abstractions.Exceptions;
 
 namespace Trupe.Abstractions.Pipelines;
 
@@ -74,9 +75,7 @@ public class PipelineMetadataCollection(ImmutableList<object> value) : IReadOnly
             }
         }
 
-        throw new InvalidOperationException(
-            $"Required metadata of type {typeof(T).FullName} not found."
-        );
+        throw new RequiredMetadataNotFoundException(typeof(T));
     }
 
     /// <summary>

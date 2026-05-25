@@ -16,6 +16,8 @@ namespace Trupe.Pipelines.Middlewares;
 /// </summary>
 public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
 {
+    public const string ForceUseGenericHandle = "Trupe:ForceUseGenericHandle";
+
     private readonly ConcurrentDictionary<
         Type,
         Func<IActor, object, CancellationToken, ValueTask>
@@ -26,16 +28,16 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
     /// </summary>
     /// <param name="context">The receive pipeline context containing the actor, message, and metadata.</param>
     /// <param name="next">The delegate to invoke the next middleware in the pipeline.</param>
-    [UnconditionalSuppressMessage(
-        "Aot",
-        "IL3050:RequiresDynamicCode",
-        Justification = "CreateCallHandleDelegate is only reachable when RuntimeFeature.IsDynamicCodeSupported is true."
-    )]
     public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
     {
         var cancellationToken = context.CancellationToken;
         var message = context.Message;
         var actor = context.Actor;
+
+        var useGeneric =
+            context.Items.TryGetValue(ForceUseGenericHandle, out var obj)
+            && obj is bool useGen
+            && useGen;
 
         if (message.Payload is InitializeActor)
         {
@@ -45,7 +47,7 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         {
             await actor.AfterRestartAsync(cancellationToken);
         }
-        else if (RuntimeFeature.IsDynamicCodeSupported)
+        else if (RuntimeFeature.IsDynamicCodeSupported && !useGeneric)
         {
             var callHandle = _typedCallHandle.GetOrAdd(
                 message.Payload.GetType(),
@@ -84,14 +86,6 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         }
     }
 
-    [RequiresDynamicCode(
-        "The native code for this instantiation might not be available at runtime."
-    )]
-    [UnconditionalSuppressMessage(
-        "Aot",
-        "IL2060",
-        Justification = "The unfriendly method is not reachable with AOT"
-    )]
     private static Func<IActor, object, CancellationToken, ValueTask> CreateCallHandleDelegate(
         Type messageType
     )

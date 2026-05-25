@@ -12,7 +12,7 @@ namespace Trupe.Abstractions.Exceptions;
 /// - The target actor being unavailable or stopped
 /// - The target actor throwing an exception while processing the request
 /// </remarks>
-public class AskException : TrupeException
+public abstract class AskException : TrupeException
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="AskException"/> class.
