@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Trupe.Abstractions.Pipelines;
 
@@ -20,6 +21,10 @@ public interface IMiddlewareConfiguration
     /// <summary>
     /// Gets the concrete type of the middleware implementation.
     /// </summary>
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
     Type MiddlewareType { get; }
 
     /// <summary>
