@@ -22,12 +22,12 @@ namespace Trupe.Mailboxes;
 /// while multiple actors can send messages concurrently.
 /// </para>
 /// </remarks>
-public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
+public class ChannelMailbox : IMailbox
 {
     private readonly int _maxSize;
     private readonly BoundedChannelFullMode _fullMode;
 
-    private Channel<IMessage> _channel;
+    private readonly Channel<IMessage> _channel;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChannelMailbox"/>.
@@ -73,20 +73,16 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
     {
         _maxSize = maxSize;
         _fullMode = fullMode;
-        _channel = CreateChannel();
-    }
 
-    private Channel<IMessage> CreateChannel()
-    {
         if (_maxSize <= 0)
         {
-            return Channel.CreateUnbounded<IMessage>(
+            _channel = Channel.CreateUnbounded<IMessage>(
                 new UnboundedChannelOptions { SingleReader = true, SingleWriter = false }
             );
         }
         else
         {
-            return Channel.CreateBounded<IMessage>(
+            _channel = Channel.CreateBounded<IMessage>(
                 new BoundedChannelOptions(_maxSize)
                 {
                     SingleReader = true,
@@ -95,14 +91,6 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
                 }
             );
         }
-    }
-
-    /// <inheritdoc />
-    public ValueTask CleanAsync()
-    {
-        _channel?.Writer.Complete();
-        _channel = CreateChannel();
-        return new ValueTask();
     }
 
     /// <inheritdoc />
@@ -115,44 +103,21 @@ public class ChannelMailbox : IMailbox, IEquatable<IMailbox>
     }
 
     /// <inheritdoc />
-    public override int GetHashCode()
-    {
-        return _channel.GetHashCode();
-    }
-
-    /// <inheritdoc />
-    public override bool Equals(object? obj)
-    {
-        return obj is IMailbox other && Equals(other);
-    }
-
-    /// <inheritdoc />
-    public bool Equals(IMailbox? other)
-    {
-        if (ReferenceEquals(this, other))
-        {
-            return true;
-        }
-
-        if (other is ChannelMailbox otherChannel)
-        {
-            return _channel == otherChannel._channel;
-        }
-
-        return false;
-    }
-
-    /// <inheritdoc />
     public async ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default)
     {
-        if (
-            await _channel.Reader.WaitToReadAsync(cancellationToken)
-            && _channel.Reader.TryRead(out var message)
-        )
+        try
         {
-            return message;
+            if (
+                await _channel.Reader.WaitToReadAsync(cancellationToken)
+                && _channel.Reader.TryRead(out var message)
+            )
+            {
+                return message;
+            }
+
+            return null;
         }
-        else
+        catch (OperationCanceledException)
         {
             return null;
         }
