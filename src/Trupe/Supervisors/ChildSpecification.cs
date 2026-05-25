@@ -11,8 +11,10 @@ namespace Trupe.Supervisors;
 /// Defines the specification for a child actor managed by a supervisor,
 /// including its type, mailbox, and restart policy.
 /// </summary>
-public record ChildSpecification : IChildSpecification
+public class ChildSpecification : IChildSpecification
 {
+    public ChildSpecification() { }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ChildSpecification"/> class with the specified actor type.
     /// </summary>
@@ -26,7 +28,6 @@ public record ChildSpecification : IChildSpecification
     )
     {
         ActorType = actorType;
-        Name = Uuid.NewUuid().ToString();
     }
 
     /// <summary>
@@ -36,19 +37,18 @@ public record ChildSpecification : IChildSpecification
         DynamicallyAccessedMemberTypes.PublicConstructors
             | DynamicallyAccessedMemberTypes.PublicMethods
     )]
-    public Type ActorType { get; }
+    public Type ActorType { get; set; }
 
     /// <summary>
     /// Gets or sets the restart policy for the child actor.
-    /// Defaults to <see cref="RestartPolicy.Permanent"/>.
     /// </summary>
-    public RestartPolicy RestartPolicy { get; set; } = RestartPolicy.Permanent;
+    public RestartPolicy RestartPolicy { get; set; } = RestartPolicy.Transient;
 
     /// <summary>
     /// Gets or sets the unique name for the child actor.
     /// Defaults to a new UUID.
     /// </summary>
-    public string Name { get; set; }
+    public string Name { get; set; } = Uuid.NewUuid().ToString();
 
     /// <summary>
     /// Gets or sets the factory function used to create mailboxes for the child actor.

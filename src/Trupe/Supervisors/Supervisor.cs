@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Exceptions;
@@ -91,7 +92,7 @@ public abstract partial class Supervisor(ILogger logger)
             DynamicallyAccessedMemberTypes.PublicConstructors
                 | DynamicallyAccessedMemberTypes.PublicMethods
         )]
-    TActor
+            TActor
     >()
         where TActor : IActor
     {
@@ -135,10 +136,11 @@ public abstract partial class Supervisor(ILogger logger)
         }
 
         var child = CreateActor(specification);
+        var registry = Context.ServiceProvider.GetRequiredService<IActorProcessRegistry>();
 
         Context.Self.Tell(new AddActor(child));
 
-        return new ActorReference(specification.Name);
+        return new ActorReference(specification.Name, registry);
     }
 
     /// <summary>
@@ -155,7 +157,7 @@ public abstract partial class Supervisor(ILogger logger)
             DynamicallyAccessedMemberTypes.PublicConstructors
                 | DynamicallyAccessedMemberTypes.PublicMethods
         )]
-    TActor
+            TActor
     >(CancellationToken cancellationToken = default)
         where TActor : IActor
     {
