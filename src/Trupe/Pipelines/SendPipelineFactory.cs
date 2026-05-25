@@ -27,13 +27,14 @@ public class SendPipelineFactory(IServiceProvider provider, IPipelineLookup look
     /// <returns>A new <see cref="ISendPipeline"/> with resolved middleware instances.</returns>
     public ISendPipeline Create(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
-        Type messageType)
+        Type messageType
+    )
     {
         var types = GetMiddlewareTypes(actorType, messageType);
 
         return new SendPipeline(
             types
-                .Select(type => (ISendMiddleware)provider.GetRequiredService(type))
+                .Select(type => (ISendMiddleware)ServiceProvider.GetRequiredService(type))
                 .ToImmutableList()
         );
     }

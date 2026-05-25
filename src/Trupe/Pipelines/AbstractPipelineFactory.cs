@@ -18,6 +18,8 @@ namespace Trupe.Pipelines;
 /// <param name="lookup">The pipeline lookup used to resolve registered middlewares.</param>
 public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipelineLookup lookup)
 {
+    protected virtual IServiceProvider ServiceProvider { get; } = provider;
+
     /// <summary>
     /// Gets the middleware scope that this factory targets (send or receive).
     /// </summary>
