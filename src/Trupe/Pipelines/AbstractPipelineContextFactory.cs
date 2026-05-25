@@ -69,11 +69,6 @@ public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
         return [];
     }
 
-    [UnconditionalSuppressMessage(
-        "Aot",
-        "IL3050:RequiresDynamicCode",
-        Justification = "The unfriendly method is not reachable with AOT"
-    )]
     private static IEnumerable<MiddlewareAttribute> GetHandleMessageTyped(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
         Type messageType
