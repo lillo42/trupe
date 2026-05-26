@@ -35,6 +35,9 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 {
     private bool _isDisposed;
 
+    /// <summary>
+    /// Gets a value indicating whether this supervisor has been disposed.
+    /// </summary>
     protected virtual bool IsDisposed => _isDisposed;
 
     /// <summary>
@@ -112,23 +115,26 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
 
-        Log.BeforeRestartSupervisor(Logger, Children.Count);
-
-        foreach (var child in Children)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            var ctx = child.Actor.Context;
-            await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(ctx);
-            await DisposeObjectAsync(child.Process);
+            Log.BeforeRestartSupervisor(Logger, Children.Count);
 
-            child.Actor = null!;
-            child.Process = null!;
-            child.Metadata.Clear();
+            foreach (var child in Children)
+            {
+                var ctx = child.Actor.Context;
+                await DisposeObjectAsync(child.Actor);
+                await DisposeObjectAsync(ctx);
+                await DisposeObjectAsync(child.Process);
+
+                child.Actor = null!;
+                child.Process = null!;
+                child.Metadata.Clear();
+            }
+
+            Children = [];
+
+            Log.BeforeRestartSupervisorCompleted(Logger);
         }
-
-        Children = [];
-
-        Log.BeforeRestartSupervisorCompleted(Logger);
     }
 
     /// <inheritdoc />
@@ -549,6 +555,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         Log.ActorStarted(Logger, child.ActorType, child.Name);
     }
 
+    /// <inheritdoc />
     public virtual void OnFailed(IActorProcess process, IMessage message, Exception exception)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
@@ -564,6 +571,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         Context.Self.Tell(new ActorProcessFailed(process, message, exception));
     }
 
+    /// <inheritdoc />
     public virtual void OnStopped(IActorProcess process, TerminatedReason reason)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);

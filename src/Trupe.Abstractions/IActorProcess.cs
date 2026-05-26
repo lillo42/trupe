@@ -35,7 +35,16 @@ public interface IActorProcess
     /// <returns>A task representing the kill operation.</returns>
     Task KillAsync();
 
+    /// <summary>
+    /// Registers a listener to receive notifications about this process's lifecycle events.
+    /// </summary>
+    /// <param name="listing">The listener to register.</param>
+    /// <returns>An <see cref="IDisposable"/> that, when disposed, automatically unregisters the listener.</returns>
     IDisposable Register(IActorProcessListener listing);
 
+    /// <summary>
+    /// Unregisters a previously registered lifecycle listener.
+    /// </summary>
+    /// <param name="listing">The listener to unregister.</param>
     void UnRegister(IActorProcessListener listing);
 }

@@ -186,7 +186,16 @@ public interface IActorReference
         CancellationToken cancellationToken = default
     );
 
+    /// <summary>
+    /// Registers a listener to receive notifications when this actor reference is terminated.
+    /// </summary>
+    /// <param name="listener">The listener to register.</param>
+    /// <returns>An <see cref="IDisposable"/> that, when disposed, automatically unregisters the listener.</returns>
     IDisposable Register(IActorReferenceListener listener);
 
+    /// <summary>
+    /// Unregisters a previously registered termination listener.
+    /// </summary>
+    /// <param name="listener">The listener to unregister.</param>
     void UnRegister(IActorReferenceListener listener);
 }

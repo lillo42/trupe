@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions.Extensions;
 
 namespace Trupe.Abstractions.Pipelines;
@@ -6,26 +7,21 @@ namespace Trupe.Abstractions.Pipelines;
 /// <summary>
 /// Base attribute for declaring middleware on actor classes or handler methods.
 /// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="MiddlewareAttribute"/> class with the specified execution order.
+/// </remarks>
+/// <param name="order">The execution order of this middleware. Lower values execute first.</param>
 [AttributeUsage(
     AttributeTargets.Class | AttributeTargets.Method,
     AllowMultiple = true,
     Inherited = true
 )]
-public abstract class MiddlewareAttribute : Attribute, IMiddlewareConfiguration
+public abstract class MiddlewareAttribute(int order) : Attribute, IMiddlewareConfiguration
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="MiddlewareAttribute"/> class with the specified execution order.
-    /// </summary>
-    /// <param name="order">The execution order of this middleware. Lower values execute first.</param>
-    protected MiddlewareAttribute(int order)
-    {
-        Order = order;
-    }
-
     /// <summary>
     /// Gets the execution order of this middleware. Lower values execute first.
     /// </summary>
-    public int Order { get; }
+    public int Order { get; } = order;
 
     /// <summary>
     /// Gets the metadata associated with this middleware. Defaults to the attribute instance itself.
@@ -69,8 +65,13 @@ public abstract class MiddlewareAttribute : Attribute, IMiddlewareConfiguration
         }
         set { _scope = value; }
     }
+
     /// <summary>
     /// Gets the concrete type of the middleware implementation this attribute registers.
     /// </summary>
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
     public abstract Type MiddlewareType { get; }
 }

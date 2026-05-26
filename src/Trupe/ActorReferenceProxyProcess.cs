@@ -241,6 +241,7 @@ public class ActorReferenceProxyProcessor(
         _isDisposed = true;
     }
 
+    /// <inheritdoc />
     public IDisposable Register(IActorReferenceListener listener)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));
@@ -248,6 +249,7 @@ public class ActorReferenceProxyProcessor(
         return _collection.Add(listener);
     }
 
+    /// <inheritdoc />
     public void UnRegister(IActorReferenceListener listener)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReferenceProxyProcessor));

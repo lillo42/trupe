@@ -16,6 +16,11 @@ namespace Trupe.Pipelines.Middlewares;
 /// </summary>
 public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
 {
+    /// <summary>
+    /// Metadata key used to force the generic <c>HandleAsync(object, CancellationToken)</c> overload
+    /// instead of the typed <c>IHandleActorMessage&lt;T&gt;</c> overload.
+    /// Set this key to <see langword="true"/> in the pipeline context items to opt out of typed dispatch.
+    /// </summary>
     public const string ForceUseGenericHandle = "Trupe:ForceUseGenericHandle";
 
     private readonly ConcurrentDictionary<
@@ -86,8 +91,18 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
         }
     }
 
+    [RequiresDynamicCode(
+        "The native code for this instantiation might not be available at runtime."
+    )]
+    [RequiresUnreferencedCode(
+        "If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met."
+    )]
     private static Func<IActor, object, CancellationToken, ValueTask> CreateCallHandleDelegate(
-        Type messageType
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            Type messageType
     )
     {
         var typed = s_callHandleMethodInfo.MakeGenericMethod(messageType);

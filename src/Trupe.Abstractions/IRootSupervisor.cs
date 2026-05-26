@@ -1,3 +1,5 @@
+using Trupe.Abstractions.Supervisors;
+
 namespace Trupe.Abstractions;
 
 /// <summary>

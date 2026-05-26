@@ -64,5 +64,15 @@ public interface IMailbox
     /// <returns>A <see cref="ValueTask"/> representing the asynchronous enqueue operation.</returns>
     ValueTask EnqueueAsync(IMessage message, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Asynchronously removes and returns the next message from the front of the mailbox queue.
+    /// </summary>
+    /// <param name="cancellationToken">
+    /// A cancellation token that can be used to cancel the wait for the next message.
+    /// </param>
+    /// <returns>
+    /// A <see cref="ValueTask{TResult}"/> containing the next <see cref="IMessage"/>,
+    /// or <see langword="null"/> if the mailbox has been completed or drained.
+    /// </returns>
     ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
 }

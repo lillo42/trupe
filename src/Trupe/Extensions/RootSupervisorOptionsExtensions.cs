@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
+using Trupe.Abstractions.Supervisors;
 using Trupe.Supervisors;
 
 namespace Trupe.Extensions;
@@ -20,7 +21,11 @@ public static class RootSupervisorOptionsExtensions
     /// <param name="configure">An optional action to configure the child specification.</param>
     /// <returns>The <see cref="RootSupervisorOptions"/> for chaining.</returns>
     public static RootSupervisorOptions AddActor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] TActor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TActor
     >(this RootSupervisorOptions options, Action<ChildSpecification>? configure = null)
         where TActor : class, IActor
     {
@@ -40,7 +45,10 @@ public static class RootSupervisorOptionsExtensions
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="actorType"/> does not implement <see cref="IActor"/>.</exception>
     public static RootSupervisorOptions AddActor(
         this RootSupervisorOptions options,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type actorType,
         Action<ChildSpecification>? configure = null
     )
@@ -65,7 +73,11 @@ public static class RootSupervisorOptionsExtensions
     /// <param name="options">The root supervisor options.</param>
     /// <returns>The <see cref="RootSupervisorOptions"/> for chaining.</returns>
     public static RootSupervisorOptions AddSupervisor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)] TSupervisor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TSupervisor
     >(this RootSupervisorOptions options)
         where TSupervisor : class, ISupervisor
     {
@@ -81,7 +93,10 @@ public static class RootSupervisorOptionsExtensions
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="supervisorType"/> does not implement <see cref="ISupervisor"/>.</exception>
     public static RootSupervisorOptions AddSupervisor(
         this RootSupervisorOptions options,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type supervisorType
     )
     {

@@ -24,6 +24,9 @@ public interface IActorContext
     /// </remarks>
     IActorReference Self { get; }
 
+    /// <summary>
+    /// Gets the unique URI identifying the current actor.
+    /// </summary>
     Uri Name { get; }
 
     /// <summary>
@@ -41,6 +44,13 @@ public interface IActorContext
     /// </remarks>
     object? Response { get; set; }
 
+    /// <summary>
+    /// Gets or sets a dictionary of arbitrary metadata associated with the current message context.
+    /// </summary>
+    /// <remarks>
+    /// Metadata is propagated through the pipeline and can be used by middlewares or the actor
+    /// to carry contextual information alongside the message payload.
+    /// </remarks>
     Dictionary<string, object?> Metadata { get; set; }
 
     /// <summary>
@@ -52,7 +62,16 @@ public interface IActorContext
     /// </remarks>
     IServiceProvider ServiceProvider { get; set; }
 
+    /// <summary>
+    /// Registers a death watch on the specified actor reference.
+    /// When that actor terminates, an <c>ActorTerminated</c> message will be sent to the current actor.
+    /// </summary>
+    /// <param name="reference">The actor reference to watch.</param>
     void DeathWatch(IActorReference reference);
 
+    /// <summary>
+    /// Removes a previously registered death watch on the specified actor reference.
+    /// </summary>
+    /// <param name="reference">The actor reference to stop watching.</param>
     void UnWatchDeath(IActorReference reference);
 }

@@ -152,6 +152,10 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Releases managed resources held by this actor reference.
+    /// </summary>
+    /// <param name="disposing"><see langword="true"/> to release managed resources; otherwise <see langword="false"/>.</param>
     protected virtual void Dispose(bool disposing)
     {
         if (_isDisposed)
@@ -199,6 +203,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
         _inner.MarkAsTerminate(reason);
     }
 
+    /// <inheritdoc />
     public IDisposable Register(IActorReferenceListener listener)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
@@ -206,6 +211,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
         return _collection.Add(listener);
     }
 
+    /// <inheritdoc />
     public void UnRegister(IActorReferenceListener listener)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
@@ -213,6 +219,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
         _collection.Remove(listener);
     }
 
+    /// <inheritdoc />
     public void OnTerminated(IActorReference reference, TerminatedReason reason)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));

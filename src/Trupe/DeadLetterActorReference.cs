@@ -63,6 +63,7 @@ public class DeadLetterActorReference(Uri name) : IActorReference
         throw new NotImplementedException();
     }
 
+    /// <inheritdoc />
     public IDisposable Register(IActorReferenceListener listener)
     {
         throw new NotImplementedException();
@@ -108,6 +109,7 @@ public class DeadLetterActorReference(Uri name) : IActorReference
         throw new NotImplementedException();
     }
 
+    /// <inheritdoc />
     public void UnRegister(IActorReferenceListener listener)
     {
         throw new NotImplementedException();

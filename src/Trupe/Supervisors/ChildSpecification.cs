@@ -13,6 +13,9 @@ namespace Trupe.Supervisors;
 /// </summary>
 public class ChildSpecification : IChildSpecification
 {
+    /// <summary>
+    /// Initializes a new empty instance of the <see cref="ChildSpecification"/> class.
+    /// </summary>
     public ChildSpecification() { }
 
     /// <summary>

@@ -108,6 +108,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
         _isDisposed = true;
     }
 
+    /// <inheritdoc />
     public void OnTerminated(IActorReference reference, TerminatedReason reason)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
@@ -115,6 +116,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
         Self.Tell(new ActorTerminated(reference, reason));
     }
 
+    /// <inheritdoc />
     public void DeathWatch(IActorReference reference)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
@@ -125,6 +127,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
         }
     }
 
+    /// <inheritdoc />
     public void UnWatchDeath(IActorReference reference)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));

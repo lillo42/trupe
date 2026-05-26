@@ -12,6 +12,7 @@ using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
 using Trupe.Collections;
 using Trupe.Guards;
+using Trupe.Pipelines;
 
 namespace Trupe;
 
@@ -250,7 +251,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        DisposeAsync(true);
+        await DisposeAsync(true);
 
         GC.SuppressFinalize(this);
     }
@@ -271,6 +272,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         _isDisposed = true;
     }
 
+    /// <inheritdoc />
     public IDisposable Register(IActorProcessListener listener)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
@@ -278,6 +280,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         return _collection.Add(listener);
     }
 
+    /// <inheritdoc />
     public void UnRegister(IActorProcessListener listing)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
