@@ -33,6 +33,21 @@ public class ActorMessageDispatcherMiddleware : IReceiveMiddleware
     /// </summary>
     /// <param name="context">The receive pipeline context containing the actor, message, and metadata.</param>
     /// <param name="next">The delegate to invoke the next middleware in the pipeline.</param>
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026:RequiresUnreferencedCode",
+        Justification = "The dynamic code path is only used when RuntimeFeature.IsDynamicCodeSupported is true."
+    )]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2111:Method with parameters or return value with DynamicallyAccessedMembersAttribute is accessed via reflection",
+        Justification = "The dynamic code path is only used when RuntimeFeature.IsDynamicCodeSupported is true."
+    )]
+    [UnconditionalSuppressMessage(
+        "Aot",
+        "IL3050:RequiresDynamicCode",
+        Justification = "The dynamic code path is only used when RuntimeFeature.IsDynamicCodeSupported is true."
+    )]
     public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
     {
         var cancellationToken = context.CancellationToken;

@@ -13,7 +13,7 @@ namespace Trupe.Pipelines;
 public record MiddlewareConfiguration(
     int Order,
     object? Metadata,
-    [DynamicallyAccessedMembers(
+    [property: DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicConstructors
             | DynamicallyAccessedMemberTypes.PublicMethods
     )]

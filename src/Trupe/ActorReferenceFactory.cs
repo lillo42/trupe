@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Trupe.Abstractions;
 
 namespace Trupe;
@@ -13,6 +14,11 @@ public class ActorReferenceFactory(IServiceProvider provider, IActorProcessRegis
     : IActorReferenceFactory
 {
     /// <inheritdoc />
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method",
+        Justification = "Actor types are registered at startup and preserved by DI container registration."
+    )]
     public IActorReference Create(string name, IActorProcess process)
     {
         var @ref = new ActorReferenceProxyProcessor(

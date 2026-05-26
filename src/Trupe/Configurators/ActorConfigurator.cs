@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
@@ -10,7 +11,14 @@ namespace Trupe.Configurators;
 /// </summary>
 /// <param name="services">The service collection to register middleware configurations into.</param>
 /// <param name="actorType">The actor type that the configured middlewares apply to.</param>
-public class ActorConfigurator(IServiceCollection services, Type actorType)
+public class ActorConfigurator(
+    IServiceCollection services,
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
+        Type actorType
+)
 {
     /// <summary>
     /// Registers a middleware of type <typeparamref name="TMiddleware"/> with the specified order and metadata.
@@ -18,7 +26,10 @@ public class ActorConfigurator(IServiceCollection services, Type actorType)
     /// <typeparam name="TMiddleware">The middleware type to register.</typeparam>
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorConfigurator Use<TMiddleware>(int order = 0, object? metadata = null)
+    public ActorConfigurator Use<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )] TMiddleware>(int order = 0, object? metadata = null)
         where TMiddleware : class, IMiddleware
     {
         return UseForMessage(typeof(TMiddleware), null, order, metadata);
@@ -30,7 +41,15 @@ public class ActorConfigurator(IServiceCollection services, Type actorType)
     /// <param name="middlewareType">The middleware type to register.</param>
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorConfigurator Use(Type middlewareType, int order = 0, object? metadata = null)
+    public ActorConfigurator Use(
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            Type middlewareType,
+        int order = 0,
+        object? metadata = null
+    )
     {
         return UseForMessage(middlewareType, null, order, metadata);
     }
@@ -42,7 +61,10 @@ public class ActorConfigurator(IServiceCollection services, Type actorType)
     /// <typeparam name="TMessage">The message type the middleware applies to.</typeparam>
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
-    public ActorConfigurator UseForMessage<TMiddleware, TMessage>(
+    public ActorConfigurator UseForMessage<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )] TMiddleware, TMessage>(
         int order = 0,
         object? metadata = null
     )
@@ -59,7 +81,11 @@ public class ActorConfigurator(IServiceCollection services, Type actorType)
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorConfigurator UseForMessage(
-        Type middlewareType,
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            Type middlewareType,
         Type? messageType,
         int order = 0,
         object? metadata = null
