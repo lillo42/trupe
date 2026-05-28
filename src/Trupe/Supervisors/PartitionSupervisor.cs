@@ -22,7 +22,7 @@ public abstract partial class PartitionSupervisor<
         DynamicallyAccessedMemberTypes.PublicConstructors
             | DynamicallyAccessedMemberTypes.PublicMethods
     )]
-TActor
+        TActor
 >(ILogger logger, int workers) : AbstractSupervisor(logger), ISupervisor, IAsyncDisposable
     where TActor : IActor
 {
@@ -51,22 +51,33 @@ TActor
     /// </remarks>
     public override async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
-        for (var i = 0; i < Workers; i++)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            var child = CreateActor(
-                new ChildSpecification(typeof(TActor))
-                {
-                    RestartPolicy = DefaultRestartPolicy,
-                    MailboxFactory = CreateMailbox,
-                }
-            );
+            Log.InitializingPartitionSupervisor(Logger, typeof(TActor).Name, Workers);
 
-            await StartActorAsync(child);
+            for (var i = 0; i < Workers; i++)
+            {
+                Log.CreatingWorkerActor(Logger, typeof(TActor).Name, i, Workers);
 
-            Children = Children.Add(child);
+                var child = CreateActor(
+                    new ChildSpecification(typeof(TActor))
+                    {
+                        RestartPolicy = DefaultRestartPolicy,
+                        MailboxFactory = CreateMailbox,
+                    }
+                );
+
+                await StartActorAsync(child);
+
+                Children = Children.Add(child);
+
+                Log.WorkerActorStarted(Logger, typeof(TActor).Name, i);
+            }
+
+            Log.PartitionSupervisorInitialized(Logger, typeof(TActor).Name, Workers);
+
+            await base.InitializeAsync(cancellationToken);
         }
-
-        await base.InitializeAsync(cancellationToken);
     }
 
     /// <summary>
@@ -79,8 +90,11 @@ TActor
         where TKey : notnull
     {
         var hash = Math.Abs(GetHashcode(key));
+        var index = hash % Children.Count;
 
-        return Children[hash % Children.Count].Reference;
+        Log.ResolvingPartition(Logger, typeof(TKey).Name, index, Children.Count);
+
+        return Children[index].Reference;
     }
 
     /// <summary>
@@ -110,5 +124,57 @@ TActor
     protected virtual IMailbox CreateMailbox(IServiceProvider provider)
     {
         return new ChannelMailbox();
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(
+            LogLevel.Information,
+            "Initializing partition supervisor for {ActorType} with {WorkerCount} workers"
+        )]
+        public static partial void InitializingPartitionSupervisor(
+            ILogger logger,
+            string actorType,
+            int workerCount
+        );
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Creating worker actor {WorkerIndex}/{WorkerCount} of type {ActorType}"
+        )]
+        public static partial void CreatingWorkerActor(
+            ILogger logger,
+            string actorType,
+            int workerIndex,
+            int workerCount
+        );
+
+        [LoggerMessage(LogLevel.Debug, "Worker actor {WorkerIndex} of type {ActorType} started")]
+        public static partial void WorkerActorStarted(
+            ILogger logger,
+            string actorType,
+            int workerIndex
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Partition supervisor initialized with {WorkerCount} {ActorType} workers"
+        )]
+        public static partial void PartitionSupervisorInitialized(
+            ILogger logger,
+            string actorType,
+            int workerCount
+        );
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Routing {KeyType} key to partition {PartitionIndex}/{PartitionCount}"
+        )]
+        public static partial void ResolvingPartition(
+            ILogger logger,
+            string keyType,
+            int partitionIndex,
+            int partitionCount
+        );
     }
 }

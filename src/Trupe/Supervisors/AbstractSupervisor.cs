@@ -94,7 +94,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
             await OnInitializeAsync(cancellationToken);
 
-            Log.SupervisoInitialized(Logger);
+            Log.SupervisorInitialized(Logger);
         }
     }
 
@@ -371,7 +371,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     [DoesNotReturn]
     protected virtual async Task EscalateAsync(Child child, IMessage message, Exception exception)
     {
-        Log.EscalingToParent(
+        Log.EscalatingToParent(
             Logger,
             exception,
             child.ActorType,
@@ -680,21 +680,21 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         public static partial void InitializingSupervisor(ILogger logger);
 
         [LoggerMessage(LogLevel.Debug, "Supervisor initialized")]
-        public static partial void SupervisoInitialized(ILogger logger);
+        public static partial void SupervisorInitialized(ILogger logger);
 
         [LoggerMessage(
             LogLevel.Information,
-            "Before restart supervisor, going to dispose {ChildCount} children"
+            "Restarting supervisor, disposing {ChildCount} children"
         )]
         public static partial void BeforeRestartSupervisor(ILogger logger, int childCount);
 
-        [LoggerMessage(LogLevel.Information, "Before restart supervisor completed")]
+        [LoggerMessage(LogLevel.Information, "Supervisor pre-restart cleanup completed")]
         public static partial void BeforeRestartSupervisorCompleted(ILogger logger);
 
-        [LoggerMessage(LogLevel.Debug, "Hanlding {MessageType} message")]
+        [LoggerMessage(LogLevel.Debug, "Handling {MessageType} message")]
         public static partial void HandlingMessage(ILogger logger, Type? messageType);
 
-        [LoggerMessage(LogLevel.Debug, "{MessageType} message handled with sucess")]
+        [LoggerMessage(LogLevel.Debug, "{MessageType} message handled with success")]
         public static partial void MessageHandled(ILogger logger, Type? messageType);
 
         [LoggerMessage(
@@ -708,7 +708,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
             Uri actorName
         );
 
-        [LoggerMessage(LogLevel.Error, "Child with {ActorName} name not found")]
+        [LoggerMessage(LogLevel.Error, "Child actor '{ActorName}' not found")]
         public static partial void ChildNotFound(ILogger logger, Uri actorName);
 
         [LoggerMessage(LogLevel.Information, "Handling stopped process for {ActorName} actor")]
@@ -765,17 +765,17 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         [LoggerMessage(LogLevel.Information, "Restarting {ActorType} actor {ActorName}")]
         public static partial void RestartingActor(ILogger logger, Type actorType, Uri actorName);
 
-        [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} Restarted")]
+        [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} restarted")]
         public static partial void ActorRestarted(ILogger logger, Type actorType, Uri actorName);
 
-        [LoggerMessage(LogLevel.Debug, "Calling Before Restart {ActorType} actor {ActorName}")]
+        [LoggerMessage(LogLevel.Debug, "Calling BeforeRestart on {ActorType} actor {ActorName}")]
         public static partial void CallingBeforeRestartActor(
             ILogger logger,
             Type actorType,
             Uri actorName
         );
 
-        [LoggerMessage(LogLevel.Debug, "Called Before Restart {ActorType} actor {ActorName}")]
+        [LoggerMessage(LogLevel.Debug, "BeforeRestart called on {ActorType} actor {ActorName}")]
         public static partial void BeforeRestartActorCalled(
             ILogger logger,
             Type actorType,
@@ -784,7 +784,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Error,
-            "Error during calling Before Restart {ActorType} actor {ActorName}"
+            "Error calling BeforeRestart on {ActorType} actor {ActorName}"
         )]
         public static partial void ErrorToCallBeforeRestartActor(
             ILogger logger,
@@ -795,9 +795,9 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Information,
-            "Escalating error to parent, source of error {ActorType} actor {ActorName} with {SourceMessageType}"
+            "Escalating failure to parent supervisor from {ActorType} actor {ActorName} processing {SourceMessageType}"
         )]
-        public static partial void EscalingToParent(
+        public static partial void EscalatingToParent(
             ILogger logger,
             Exception ex,
             Type actorType,
@@ -813,7 +813,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Information,
-            "Creating actor with {ActorType} type and {ActorName} name"
+            "Creating {ActorType} actor with name '{ActorName}'"
         )]
         public static partial void CreatingActor(ILogger logger, Type actorType, string actorName);
 
@@ -825,7 +825,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Debug,
-            "Received acttor process failed with {FailedMessageType} for {ActorType} actor {ActorName}"
+            "Received actor process failed with {FailedMessageType} for {ActorType} actor {ActorName}"
         )]
         public static partial void ReceivedActorProcessFailed(
             ILogger logger,
@@ -837,7 +837,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Debug,
-            "Received acttor process stopped with {StoppedReason} for {ActorType} actor {ActorName}"
+            "Received actor process stopped with {StoppedReason} for {ActorType} actor {ActorName}"
         )]
         public static partial void ReceivedActorProcessStopped(
             ILogger logger,
@@ -848,7 +848,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
 
         [LoggerMessage(
             LogLevel.Information,
-            "Permanent restart policy going to be apply for {ActorType} actor {ActorName}"
+            "Permanent restart policy going to be applied for {ActorType} actor {ActorName}"
         )]
         public static partial void PermanentRestart(ILogger logger, Type actorType, Uri actorName);
 

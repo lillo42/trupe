@@ -207,7 +207,9 @@ public abstract partial class Supervisor(ILogger logger)
         }
 
         var child = CreateActor(specification);
-        var actorRef = new ActorReference(specification.Name);
+
+        var registry = Context.ServiceProvider.GetRequiredService<IActorProcessRegistry>();
+        var actorRef = new ActorReference(specification.Name, registry);
 
         var val = Context.Self.TellAsync(new AddActor(child), cancellationToken);
 
