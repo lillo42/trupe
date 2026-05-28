@@ -16,7 +16,10 @@ public class ChildSpecification : IChildSpecification
     /// <summary>
     /// Initializes a new empty instance of the <see cref="ChildSpecification"/> class.
     /// </summary>
-    public ChildSpecification() { }
+    public ChildSpecification()
+    {
+        ActorType = typeof(object);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChildSpecification"/> class with the specified actor type.

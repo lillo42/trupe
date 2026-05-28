@@ -642,6 +642,14 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Performs the actual asynchronous disposal of this supervisor's resources.
+    /// </summary>
+    /// <param name="disposing">
+    /// <see langword="true"/> to dispose managed resources (child actors, their contexts, and processes);
+    /// <see langword="false"/> if called from a finalizer, in which case managed resources should not be touched.
+    /// </param>
+    /// <returns>A task representing the asynchronous disposal operation.</returns>
     protected virtual async ValueTask DisposeAsync(bool disposing)
     {
         if (_isDisposed)
@@ -811,10 +819,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         [LoggerMessage(LogLevel.Information, "{ActorType} actor {ActorName} resumed")]
         public static partial void ActorResumed(ILogger logger, Type actorType, Uri actorName);
 
-        [LoggerMessage(
-            LogLevel.Information,
-            "Creating {ActorType} actor with name '{ActorName}'"
-        )]
+        [LoggerMessage(LogLevel.Information, "Creating {ActorType} actor with name '{ActorName}'")]
         public static partial void CreatingActor(ILogger logger, Type actorType, string actorName);
 
         [LoggerMessage(LogLevel.Information, "Starting {ActorType} actor {ActorName}")]

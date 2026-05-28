@@ -25,7 +25,7 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     /// <inheritdoc />
     public TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object>? metadata = null,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
     {
@@ -44,7 +44,7 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     /// <inheritdoc />
     public Task<TResponse> AskAsync<TResponse>(
         object request,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {
@@ -88,7 +88,11 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     }
 
     /// <inheritdoc />
-    public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
+    public void Tell(
+        object message,
+        Dictionary<string, object?>? metadata,
+        TimeSpan? timeout = null
+    )
     {
         throw new NotImplementedException();
     }
@@ -102,7 +106,7 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     /// <inheritdoc />
     public ValueTask TellAsync(
         object message,
-        Dictionary<string, object>? metadata,
+        Dictionary<string, object?>? metadata,
         CancellationToken cancellationToken = default
     )
     {

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -76,7 +77,7 @@ public class HostingIntegrationTests
         {
             // Act
             var supervisor = host.Services.GetRequiredService<IRootSupervisor>();
-            var actorRef = System.Linq.Enumerable.First(supervisor.Children);
+            var actorRef = supervisor.Children.First();
             var response = await actorRef.AskAsync<Pong>(new Ping("hosted"));
 
             // Assert
