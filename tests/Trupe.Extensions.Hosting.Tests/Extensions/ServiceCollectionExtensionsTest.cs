@@ -7,13 +7,13 @@ namespace Trupe.Extensions.Hosting.Tests.Extensions;
 public class ServiceCollectionExtensionsTest
 {
     [Test]
-    public async Task AddActorSystemHostedSevice_Should_RegisterActorSystemHostedService()
+    public async Task AddActorSystemHostedService_Should_RegisterActorSystemHostedService()
     {
         // Arrange
         var services = new ServiceCollection();
 
         // Act
-        services.AddActorSystemHostedSevice();
+        services.AddActorSystemHostedService();
 
         // Assert
         await Assert
@@ -25,13 +25,13 @@ public class ServiceCollectionExtensionsTest
     }
 
     [Test]
-    public async Task AddActorSystemHostedSevice_Should_ReturnSameServiceCollection()
+    public async Task AddActorSystemHostedService_Should_ReturnSameServiceCollection()
     {
         // Arrange
         var services = new ServiceCollection();
 
         // Act
-        var result = services.AddActorSystemHostedSevice();
+        var result = services.AddActorSystemHostedService();
 
         // Assert
         await Assert.That(result).IsSameReferenceAs(services);

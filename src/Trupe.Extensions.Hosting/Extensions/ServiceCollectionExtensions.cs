@@ -13,7 +13,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The <see cref="IServiceCollection"/> to add the service to.</param>
     /// <returns>The same <paramref name="services"/> instance for method chaining.</returns>
-    public static IServiceCollection AddActorSystemHostedSevice(this IServiceCollection services)
+    public static IServiceCollection AddActorSystemHostedService(this IServiceCollection services)
     {
         services.AddHostedService<ActorSystemHostedService>();
         return services;

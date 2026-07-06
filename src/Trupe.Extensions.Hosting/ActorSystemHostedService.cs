@@ -12,10 +12,9 @@ namespace Trupe.Extensions.Hosting;
 public class ActorSystemHostedService(ActorSystem system) : IHostedService
 {
     /// <inheritdoc />
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        system.StartAsync();
-        return Task.CompletedTask;
+        await system.StartAsync();
     }
 
     /// <inheritdoc />
