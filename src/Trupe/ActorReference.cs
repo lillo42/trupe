@@ -156,7 +156,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     /// Releases managed resources held by this actor reference.
     /// </summary>
     /// <param name="disposing"><see langword="true"/> to release managed resources; otherwise <see langword="false"/>.</param>
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_isDisposed)
         {

@@ -517,7 +517,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
 
-        Log.CreatingActor(Logger, specification.ActorType.GetType(), specification.Name);
+        Log.CreatingActor(Logger, specification.ActorType, specification.Name);
 
         var actor = ActorFactory.CreateActor(specification.ActorType);
         var process = new ActorProcess(

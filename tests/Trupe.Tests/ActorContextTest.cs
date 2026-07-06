@@ -2,7 +2,6 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
-using NSubstitute.Extensions;
 using Trupe.Abstractions;
 using Trupe.Abstractions.SystemMessages;
 

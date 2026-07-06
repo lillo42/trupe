@@ -159,7 +159,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         var scope = GetOrCreateServiceScope(message);
         var serviceProvider = scope.ServiceProvider;
         actor.Context.ServiceProvider = serviceProvider;
-
+        
         try
         {
             var pipelineFactory = serviceProvider.GetRequiredService<IReceivePipelineFactory>();
@@ -192,6 +192,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         catch (Exception ex)
         {
             _collection.InvokeOnFailed(this, message, ex);
+            if (message is IAskMessage askMessage)
+            {
+                askMessage.SetException(ex);
+            }
+            
             throw;
         }
         finally

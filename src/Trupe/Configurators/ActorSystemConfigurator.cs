@@ -61,6 +61,7 @@ public class ActorSystemConfigurator
         );
 
         _serviceCollection.TryAddSingleton<IActorFactory, ActorFactory>();
+        _serviceCollection.TryAddSingleton<IActorReferenceFactory, ActorReferenceFactory>();
 
         _serviceCollection.TryAddSingleton<AskMiddleware>();
         _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
@@ -248,11 +249,27 @@ public class ActorSystemConfigurator
     /// <summary>
     /// Registers a custom actor process registry instance.
     /// </summary>
-    /// <param name="actorRegistery">The actor process registry to use.</param>
+    /// <param name="actorRegistry">The actor process registry to use.</param>
     /// <returns>This configurator for method chaining.</returns>
-    public ActorSystemConfigurator SetActorRegistery(IActorProcessRegistry actorRegistery)
+    public ActorSystemConfigurator SetActorRegistry(IActorProcessRegistry actorRegistry)
     {
-        _serviceCollection.AddSingleton(_ => actorRegistery);
+        _serviceCollection.AddSingleton(_ => actorRegistry);
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a middleware singleton instance.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="lifetime">The service lifetime for the middleware registration.</param>
+    public ActorSystemConfigurator AddMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(ServiceLifetime lifetime = ServiceLifetime.Transient)
+        where TMiddleware : class, IMiddleware
+    {
+        _serviceCollection.TryAdd(
+            new ServiceDescriptor(typeof(TMiddleware), typeof(TMiddleware), lifetime)
+        );
         return this;
     }
 

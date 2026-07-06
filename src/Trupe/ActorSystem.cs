@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
@@ -21,7 +20,6 @@ namespace Trupe;
 public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider serviceProvider)
 {
     private ActorProcess? _process;
-    private readonly IRootSupervisor _rootSupervisor = rootSupervisor;
 
     /// <summary>
     /// Starts the actor system by initializing the root supervisor and beginning message processing.
@@ -35,11 +33,11 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         }
 
         var mailbox = new ChannelMailbox();
-        _process = new ActorProcess(_rootSupervisor, mailbox);
+        _process = new ActorProcess(rootSupervisor, mailbox);
 
         var factory = serviceProvider.GetRequiredService<IActorReferenceFactory>();
 
-        _rootSupervisor.Context = new ActorContext(
+        rootSupervisor.Context = new ActorContext(
             factory.Create("root", _process),
             serviceProvider.CreateAsyncScope()
         );
