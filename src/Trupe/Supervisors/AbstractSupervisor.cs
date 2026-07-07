@@ -12,7 +12,7 @@ using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
-using Trupe.Abstractions.Supervisors.Commands;
+using Trupe.Abstractions.Supervisors.Events;
 using Trupe.Abstractions.SystemMessages;
 using Trupe.Guards;
 using Trupe.Messages;

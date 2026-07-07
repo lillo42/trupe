@@ -1,6 +1,4 @@
-using Trupe.Abstractions;
-
-namespace Trupe.Supervisors.Commands;
+namespace Trupe.Abstractions.Supervisors.Commands;
 
 /// <summary>
 /// Command to remove a child actor from a supervisor.

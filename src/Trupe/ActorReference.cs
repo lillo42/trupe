@@ -165,6 +165,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
 
         if (disposing)
         {
+            _inner.UnRegister(this);
             _collection.Clear();
         }
 

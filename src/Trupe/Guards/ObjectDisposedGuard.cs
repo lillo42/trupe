@@ -7,9 +7,9 @@ namespace Trupe.Guards;
 internal static class ObjectDisposedGuard
 {
     [StackTraceHidden]
-    public static void ThrowIf([DoesNotReturnIf(true)] bool conditinal, string objectName)
+    public static void ThrowIf([DoesNotReturnIf(true)] bool conditional, string objectName)
     {
-        if (conditinal)
+        if (conditional)
         {
             throw new ObjectDisposedException(objectName);
         }

@@ -6,6 +6,8 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
+using Trupe.Abstractions.Supervisors.Commands;
+using Trupe.Abstractions.Supervisors.Events;
 using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;

@@ -1,7 +1,7 @@
 using System;
 using Trupe.Abstractions.Messages;
 
-namespace Trupe.Abstractions.Supervisors.Commands;
+namespace Trupe.Abstractions.Supervisors.Events;
 
 /// <summary>
 /// Event indicating that an actor process failed while processing a message.

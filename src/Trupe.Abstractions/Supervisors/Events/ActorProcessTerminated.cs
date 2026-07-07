@@ -1,4 +1,4 @@
-namespace Trupe.Abstractions.Supervisors.Commands;
+namespace Trupe.Abstractions.Supervisors.Events;
 
 /// <summary>
 /// Event indicating that an actor process has been stopped.
