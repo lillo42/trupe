@@ -52,7 +52,7 @@ public class ActorReferences
 
         var response = new SomeResponse();
 
-        inner.Ask<SomeResponse>(Arg.Any<object>(), Arg.Any<TimeSpan>()).Returns(response);
+        inner.Ask<SomeResponse>(Arg.Any<object>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<TimeSpan>()).Returns(response);
         inner
             .Ask<SomeResponse>(
                 Arg.Any<object>(),
@@ -66,8 +66,8 @@ public class ActorReferences
         var req = new SomeRequest();
         var timeout = TimeSpan.FromSeconds(1);
 
-        var resp = @ref.Ask<SomeResponse>(req, timeout);
-        inner.Received(1).Ask<SomeResponse>(req, timeout);
+        var resp = @ref.Ask<SomeResponse>(req, timeout: timeout);
+        inner.Received(1).Ask<SomeResponse>(req, Arg.Any<Dictionary<string, object?>?>(), timeout);
         await Assert.That(resp).IsEqualTo(response);
 
         var metadata = new Dictionary<string, object?> { ["Some"] = new object() };

@@ -45,6 +45,7 @@ public interface IActorReference
     /// </summary>
     /// <typeparam name="TResponse">The type of the expected response.</typeparam>
     /// <param name="request">The request message to send to the actor.</param>
+    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
     /// <param name="timeout">
     /// Optional timeout for the operation. If not specified, uses the default ask timeout
     /// configured in the actor system. If the timeout expires, a <see cref="TimeoutException"/> is thrown.
@@ -61,23 +62,7 @@ public interface IActorReference
     /// </para>
     /// <exception cref="TimeoutException">Thrown when the specified timeout expires before receiving a response.</exception>
     /// </remarks>
-    TResponse Ask<TResponse>(object request, TimeSpan? timeout = null);
-
-    /// <summary>
-    /// Sends a request message with metadata to the actor and synchronously waits for a response.
-    /// </summary>
-    /// <typeparam name="TResponse">The type of the expected response.</typeparam>
-    /// <param name="request">The request message to send to the actor.</param>
-    /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
-    /// <param name="timeout">
-    /// Optional timeout for the operation. If the timeout expires, a <see cref="TimeoutException"/> is thrown.
-    /// </param>
-    /// <returns>The response from the actor.</returns>
-    TResponse Ask<TResponse>(
-        object request,
-        Dictionary<string, object?>? metadata = null,
-        TimeSpan? timeout = null
-    );
+    TResponse Ask<TResponse>(object request, Dictionary<string, object?>? metadata = null, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a request message to the actor and waits for a response.

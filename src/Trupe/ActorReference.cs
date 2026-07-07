@@ -64,17 +64,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     public Uri Name => _inner.Name;
 
     /// <inheritdoc />
-    public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
-    {
-        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
-        return _inner.Ask<TResponse>(request, timeout);
-    }
-
-    /// <inheritdoc />
     public TResponse Ask<TResponse>(
         object request,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
     {
