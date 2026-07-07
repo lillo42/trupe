@@ -342,7 +342,7 @@ public abstract partial class AbstractSupervisor(ILogger logger)
             await Task.WhenAll(Children.Select(x => StopActorAsync(x, TerminatedReason.Stopped)));
         }
 
-        Log.StoppingChild(Logger, Strategy);
+        Log.ChildStopped(Logger, Strategy);
     }
 
     /// <summary>

@@ -131,13 +131,19 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
                 message.CancellationToken
             );
 
-            await ProcessAsync(Actor, message, cts.Token);
-
             if (message.Payload is Stop)
             {
                 _collection.InvokeOnStopped(this, TerminatedReason.Stopped);
+                
+                if (message is IAskMessage askMessage)
+                {
+                    askMessage.SetResult(null);
+                }
+                
                 return;
             }
+            
+            await ProcessAsync(Actor, message, cts.Token);
         }
     }
 
