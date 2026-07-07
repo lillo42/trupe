@@ -35,14 +35,18 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     /// </summary>
     /// <param name="name">The actor name used for registry lookup.</param>
     public ActorReference(string name)
-        : this(new Uri($"trupe://localhost/{name}"), ActorProcessRegistry.Instance) { }
+        : this(new Uri($"trupe://localhost/{name}"), ActorProcessRegistry.Instance)
+    {
+    }
 
     /// <summary>
     /// Creates a new actor reference by resolving the URI from the default registry.
     /// </summary>
     /// <param name="name">The actor URI used for registry lookup.</param>
     public ActorReference(Uri name)
-        : this(name, ActorProcessRegistry.Instance) { }
+        : this(name, ActorProcessRegistry.Instance)
+    {
+    }
 
     /// <summary>
     /// Creates a new actor reference by resolving the name from the specified registry.
@@ -50,7 +54,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     /// <param name="name">The actor name used for registry lookup.</param>
     /// <param name="registry">The registry to resolve the reference from.</param>
     public ActorReference(string name, IActorProcessRegistry registry)
-        : this(new Uri($"trupe://localhost/{name}"), registry) { }
+        : this(new Uri($"trupe://localhost/{name}"), registry)
+    {
+    }
 
     /// <summary>
     /// Creates a new actor reference by resolving the URI from the specified registry.
@@ -58,7 +64,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     /// <param name="name">The actor URI used for registry lookup.</param>
     /// <param name="registry">The registry to resolve the reference from.</param>
     public ActorReference(Uri name, IActorProcessRegistry registry)
-        : this(registry.GetReference(name)) { }
+        : this(registry.GetReference(name))
+    {
+    }
 
     /// <inheritdoc />
     public Uri Name => _inner.Name;
@@ -157,7 +165,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
 
         if (disposing)
         {
-            _inner.UnRegister(this);
+            ObjectDisposedGuard.Do(() => _inner.UnRegister(this));
             _collection.Clear();
         }
 
@@ -168,7 +176,6 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     public void Stop()
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
         _inner.Stop();
     }
 
@@ -176,23 +183,20 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     public async Task StopAsync()
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
         await _inner.StopAsync();
     }
 
     /// <inheritdoc />
-    public Task KillAsync()
+    public async Task KillAsync()
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
-        return _inner.KillAsync();
+        await _inner.KillAsync();
     }
 
     /// <inheritdoc />
     public void MarkAsTerminate(TerminatedReason reason)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
         _inner.MarkAsTerminate(reason);
     }
 

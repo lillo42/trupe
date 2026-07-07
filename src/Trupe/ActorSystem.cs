@@ -54,6 +54,7 @@ public class ActorSystem(IRootSupervisor rootSupervisor, IServiceProvider servic
         if (_process != null)
         {
             await rootSupervisor.Context.Self.StopAsync();
+            await _process.DisposeAsync();
             _process = null;
         }
     }

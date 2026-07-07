@@ -113,7 +113,7 @@ public record ActorContext(IActorReference Self, IServiceScope Scope)
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorContext));
 
-        Self.Tell(new ActorTerminated(reference, reason));
+        Self.TellAsync(new ActorTerminated(reference, reason));
     }
 
     /// <inheritdoc />

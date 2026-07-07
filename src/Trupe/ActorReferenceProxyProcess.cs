@@ -231,7 +231,7 @@ public class ActorReferenceProxyProcessor(
         {
             _collection.Clear();
 
-            using var scope = provider.CreateAsyncScope();
+            using var scope = provider.CreateScope();
             var sp = scope.ServiceProvider;
 
             var registry = sp.GetRequiredService<IActorProcessRegistry>();

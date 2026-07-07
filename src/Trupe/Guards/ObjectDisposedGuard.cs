@@ -14,4 +14,16 @@ internal static class ObjectDisposedGuard
             throw new ObjectDisposedException(objectName);
         }
     }
+
+    [StackTraceHidden]
+    public static void Do(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
 }

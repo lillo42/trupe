@@ -194,6 +194,10 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         catch (OperationCanceledException)
         {
             // It was requested to stop the process
+            if (message is IAskMessage askMessage)
+            {
+                askMessage.SetCanceled();
+            }
         }
         catch (Exception ex)
         {
