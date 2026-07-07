@@ -11,7 +11,7 @@ using Trupe.Extensions;
 
 namespace Trupe.IntegrationTests;
 
-public class ReceivePipelineTest
+public class SendPipelineTest
 {
     private IServiceProvider _serviceProvider = null!;
     private IRootSupervisor _rootSupervisor = null!;
@@ -40,7 +40,7 @@ public class ReceivePipelineTest
                 
                 opt.ConfigureRootSupervisor(root => root.AddActor<ActorWithMiddleware>());
             });
-
+        
         _serviceProvider = collection.BuildServiceProvider();
         _rootSupervisor = _serviceProvider.GetRequiredService<IRootSupervisor>();
 
@@ -49,32 +49,32 @@ public class ReceivePipelineTest
 
         await Task.Delay(1_000);
     }
-    
+
     [After(Test)]
     public async Task After()
     {
         var system = _serviceProvider.GetRequiredService<ActorSystem>();
         await system.StopAsync();
     }
-
+    
     [Test]
     [Timeout(60_000)]
-    public async Task PipelineRunInvokeAllReceived(CancellationToken cancellationToken)
+    public async Task PipelineRunInvokeAllSent(CancellationToken cancellationToken)
     {
         await Assert.That(_rootSupervisor.Children).Count().IsEqualTo(1);
         
         var @ref = _rootSupervisor.Children.First();
         
-        var pong = await @ref.AskAsync<Pong>(new Ping(nameof(PipelineRunInvokeAllReceived)), new Dictionary<string, object?>
+        var pong = await @ref.AskAsync<Pong>(new Ping(nameof(PipelineRunInvokeAllSent)), new Dictionary<string, object?>
         {
-            ["TestContext"] = nameof(PipelineRunInvokeAllReceived)
+            ["TestContext"] = nameof(PipelineRunInvokeAllSent)
         }, cancellationToken);
         
-        await Assert.That(pong.Message).IsEqualTo(nameof(PipelineRunInvokeAllReceived));
+        await Assert.That(pong.Message).IsEqualTo(nameof(PipelineRunInvokeAllSent));
         
         var interceptor = _serviceProvider.GetRequiredService<Interceptor>();
 
-        var values = interceptor.GetValues(nameof(PipelineRunInvokeAllReceived));
+        var values = interceptor.GetValues(nameof(PipelineRunInvokeAllSent));
         await Assert.That(values)
             .Count().IsEqualTo(5)
             .And.Contains(nameof(GlobalMiddlewareViaConfig))
@@ -83,7 +83,7 @@ public class ReceivePipelineTest
             .And.Contains(nameof(PingMiddleware))
             .And.Contains(nameof(PingMiddlewareWithAttribute));
     }
-
+    
     public class Interceptor
     {
         private readonly ConcurrentDictionary<string, List<string>> _values = [];
@@ -101,16 +101,16 @@ public class ReceivePipelineTest
     }
     
     public record Ping(string Message);
-    public record  Pong(string Message);
+    public record Pong(string Message);
     
     public class GlobalMiddlewareAttribute() : MiddlewareAttribute(0)
     {
         public override Type MiddlewareType => typeof(GlobalMiddleware);
     }
     
-    public class GlobalMiddleware(Interceptor interceptor) : IReceiveMiddleware 
+    public class GlobalMiddleware(Interceptor interceptor) : ISendMiddleware
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
             if (context.Message.Metadata.TryGetValue("TestContext", out var obj) && obj is string testContext)
             {
@@ -121,9 +121,9 @@ public class ReceivePipelineTest
         }
     }
     
-    public class GlobalMiddlewareViaConfig(Interceptor interceptor) : IReceiveMiddleware 
+    public class GlobalMiddlewareViaConfig(Interceptor interceptor) : ISendMiddleware 
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
             if (context.Message.Metadata.TryGetValue("TestContext", out var obj) && obj is string testContext)
             {
@@ -134,9 +134,9 @@ public class ReceivePipelineTest
         }
     }
     
-    public class GlobalMiddlewareWithoutAttribute(Interceptor interceptor) : IReceiveMiddleware 
+    public class GlobalMiddlewareWithoutAttribute(Interceptor interceptor) : ISendMiddleware  
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
             if (context.Message.Metadata.TryGetValue("TestContext", out var obj) && obj is string testContext)
             {
@@ -152,9 +152,9 @@ public class ReceivePipelineTest
         public override Type MiddlewareType => typeof(PingMiddleware);
     }
     
-    public class PingMiddleware(Interceptor interceptor) : IReceiveMiddleware 
+    public class PingMiddleware(Interceptor interceptor) : ISendMiddleware 
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
             if (context.Message.Metadata.TryGetValue("TestContext", out var obj) && obj is string testContext)
             {
@@ -165,9 +165,9 @@ public class ReceivePipelineTest
         }
     }
     
-    public class PingMiddlewareWithAttribute(Interceptor interceptor) : IReceiveMiddleware 
+    public class PingMiddlewareWithAttribute(Interceptor interceptor) : ISendMiddleware 
     {
-        public async ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
+        public async ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
             if (context.Message.Metadata.TryGetValue("TestContext", out var obj) && obj is string testContext)
             {
