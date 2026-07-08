@@ -1,5 +1,5 @@
+using System;
 using System.Threading.Tasks;
-using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Pipelines;
 
@@ -24,7 +24,7 @@ public class AskMiddleware : IReceiveMiddleware
                 await next(context);
                 askMessage.SetResult(context.ActorContext.Response);
             }
-            catch (AskException ex) // If the exception is an AskException, we can set it directly on the askMessage.
+            catch (Exception ex) // If the exception is an AskException, we can set it directly on the askMessage.
             {
                 askMessage.SetException(ex);
             }

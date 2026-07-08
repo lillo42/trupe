@@ -19,6 +19,11 @@ namespace Trupe.Pipelines;
 public abstract class AbstractPipelineFactory(IServiceProvider provider, IPipelineLookup lookup)
 {
     /// <summary>
+    /// Gets the service provider used to resolve middleware instances and other dependencies.
+    /// </summary>
+    protected virtual IServiceProvider ServiceProvider { get; } = provider;
+
+    /// <summary>
     /// Gets the middleware scope that this factory targets (send or receive).
     /// </summary>
     protected abstract MiddlewareScope Scope { get; }

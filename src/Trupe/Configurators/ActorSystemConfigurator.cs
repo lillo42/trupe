@@ -6,7 +6,7 @@ using Trupe.Abstractions;
 using Trupe.Abstractions.Extensions;
 using Trupe.Abstractions.Options;
 using Trupe.Abstractions.Pipelines;
-using Trupe.Factories;
+using Trupe.Abstractions.Supervisors;
 using Trupe.Pipelines;
 using Trupe.Pipelines.Middlewares;
 
@@ -36,7 +36,7 @@ public class ActorSystemConfigurator
 
         _serviceCollection.TryAddSingleton<ActorSystem>();
         _serviceCollection.TryAddSingleton<IRootSupervisor, RootSupervisor>();
-        _serviceCollection.TryAddSingleton(_ => ActorRegister.Instance);
+        _serviceCollection.TryAddSingleton(_ => ActorProcessRegistry.Instance);
 
         _serviceCollection.TryAddSingleton<IPipelineLookup, PipelineRegistry>();
 
@@ -61,10 +61,11 @@ public class ActorSystemConfigurator
         );
 
         _serviceCollection.TryAddSingleton<IActorFactory, ActorFactory>();
+        _serviceCollection.TryAddSingleton<IActorReferenceFactory, ActorReferenceFactory>();
 
         _serviceCollection.TryAddSingleton<AskMiddleware>();
         _serviceCollection.TryAddSingleton<ActorMessageDispatcherMiddleware>();
-        _serviceCollection.TryAddSingleton<MailboxDispatcherMiddleware>();
+        _serviceCollection.TryAddSingleton<ActorProcessDispatcherMiddleware>();
         _serviceCollection.Configure<PipelineOptions>(static opt =>
         {
             opt.Middlewares.Add(
@@ -87,7 +88,7 @@ public class ActorSystemConfigurator
                 new PipelineMiddlewareConfiguration
                 {
                     Order = int.MaxValue,
-                    MiddlewareType = typeof(MailboxDispatcherMiddleware),
+                    MiddlewareType = typeof(ActorProcessDispatcherMiddleware),
                 }
             );
         });
@@ -103,7 +104,11 @@ public class ActorSystemConfigurator
     /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator AddActor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TActor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TActor
     >(Action<ActorConfigurator>? configure = null)
         where TActor : class, IActor
     {
@@ -121,7 +126,10 @@ public class ActorSystemConfigurator
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="actorType"/> does not implement <see cref="IActor"/>.</exception>
     public ActorSystemConfigurator AddActor(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type actorType,
         Action<ActorConfigurator>? configure = null
     )
@@ -146,7 +154,11 @@ public class ActorSystemConfigurator
     /// <param name="configure">An optional action to configure per-actor pipeline middlewares.</param>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator AddSupervisor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSupervisor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TSupervisor
     >(Action<ActorConfigurator>? configure = null)
         where TSupervisor : class, ISupervisor
     {
@@ -162,7 +174,10 @@ public class ActorSystemConfigurator
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="supervisorType"/> does not implement <see cref="ISupervisor"/>.</exception>
     public ActorSystemConfigurator AddSupervisor(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type supervisorType,
         Action<ActorConfigurator>? configure = null
     )
@@ -194,7 +209,11 @@ public class ActorSystemConfigurator
     /// <typeparam name="TSupervisor">The type of the root supervisor.</typeparam>
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     public ActorSystemConfigurator SetRootSupervisor<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSupervisor
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TSupervisor
     >()
         where TSupervisor : class, IRootSupervisor
     {
@@ -209,7 +228,10 @@ public class ActorSystemConfigurator
     /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="rootSupervisorType"/> does not implement <see cref="IRootSupervisor"/>.</exception>
     public ActorSystemConfigurator SetRootSupervisor(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type rootSupervisorType
     )
     {
@@ -225,13 +247,29 @@ public class ActorSystemConfigurator
     }
 
     /// <summary>
-    /// Sets a custom <see cref="IActorRegister"/> instance, replacing the default <see cref="ActorRegister.Instance"/>.
+    /// Registers a custom actor process registry instance.
     /// </summary>
-    /// <param name="actorRegister">The <see cref="IActorRegister"/> instance to use.</param>
-    /// <returns>The <see cref="ActorSystemConfigurator"/> for chaining.</returns>
-    public ActorSystemConfigurator SetActorRegister(IActorRegister actorRegister)
+    /// <param name="actorRegistry">The actor process registry to use.</param>
+    /// <returns>This configurator for method chaining.</returns>
+    public ActorSystemConfigurator SetActorRegistry(IActorProcessRegistry actorRegistry)
     {
-        _serviceCollection.AddSingleton(_ => actorRegister);
+        _serviceCollection.AddSingleton(_ => actorRegistry);
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a middleware singleton instance.
+    /// </summary>
+    /// <typeparam name="TMiddleware">The middleware type.</typeparam>
+    /// <param name="lifetime">The service lifetime for the middleware registration.</param>
+    public ActorSystemConfigurator AddMiddleware<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+    >(ServiceLifetime lifetime = ServiceLifetime.Transient)
+        where TMiddleware : class, IMiddleware
+    {
+        _serviceCollection.TryAdd(
+            new ServiceDescriptor(typeof(TMiddleware), typeof(TMiddleware), lifetime)
+        );
         return this;
     }
 
@@ -286,7 +324,10 @@ public class ActorSystemConfigurator
     /// <param name="middlewareType">The middleware type to register.</param>
     /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type middlewareType,
         ServiceLifetime lifetime = ServiceLifetime.Transient
     )
@@ -302,7 +343,10 @@ public class ActorSystemConfigurator
     /// <param name="middlewareFactory">The factory delegate to create middleware instances.</param>
     /// <param name="lifetime">The service lifetime for the middleware registration.</param>
     public ActorSystemConfigurator AddMiddleware(
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
             Type middlewareType,
         Func<IServiceProvider, object> middlewareFactory,
         ServiceLifetime lifetime = ServiceLifetime.Transient
@@ -319,7 +363,11 @@ public class ActorSystemConfigurator
     /// </summary>
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     public ActorSystemConfigurator Use<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TMiddleware
     >()
         where TMiddleware : class, IMiddleware
     {
@@ -332,7 +380,11 @@ public class ActorSystemConfigurator
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="order">The execution order; lower values execute first.</param>
     public ActorSystemConfigurator Use<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TMiddleware
     >(int order)
         where TMiddleware : class, IMiddleware
     {
@@ -345,7 +397,11 @@ public class ActorSystemConfigurator
     /// <typeparam name="TMiddleware">The middleware type.</typeparam>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TMiddleware
     >(object? metadata)
         where TMiddleware : class, IMiddleware
     {
@@ -360,7 +416,11 @@ public class ActorSystemConfigurator
     /// <param name="order">The execution order; lower values execute first.</param>
     /// <param name="metadata">Optional metadata to associate with the middleware.</param>
     public ActorSystemConfigurator Use<
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMiddleware
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors
+                | DynamicallyAccessedMemberTypes.PublicMethods
+        )]
+            TMiddleware
     >(int order, object? metadata)
         where TMiddleware : class, IMiddleware
     {

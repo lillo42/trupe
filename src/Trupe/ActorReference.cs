@@ -1,170 +1,201 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
-using Trupe.Abstractions.Mailboxes;
-using Trupe.Abstractions.Messages;
-using Trupe.Abstractions.Pipelines;
-using Trupe.Abstractions.Pipelines.Metadatas;
-using Trupe.Messages;
-using Trupe.Pipelines;
+using Trupe.Collections;
+using Trupe.Guards;
 
 namespace Trupe;
 
 /// <summary>
-/// Default implementation of <see cref="IActorReference"/> that sends messages to an actor through a send pipeline and mailbox.
+/// A decorator around an <see cref="IActorReference"/> that resolves references via the actor process registry.
+/// Supports creating references by name or URI for lookup-based resolution.
 /// </summary>
-/// <param name="actorType">The type of the actor this reference points to.</param>
-/// <param name="provider">The service provider used to create scoped pipeline instances.</param>
-/// <param name="mailbox">The mailbox used to deliver messages to the actor.</param>
-public class ActorReference(
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
-    IServiceProvider provider,
-    IMailbox mailbox)
-    : IActorReference
+public class ActorReference : IActorReference, IDisposable, IActorReferenceListener
 {
-    /// <inheritdoc />
-    public event EventHandler<TerminatedEventArgs>? Terminated;
+    private bool _isDisposed;
+    private readonly IActorReference _inner;
+    private readonly ActorReferenceListenerCollection _collection;
 
-    /// <inheritdoc />
-    public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
+    /// <summary>
+    /// Creates a new actor reference wrapping the specified inner reference.
+    /// </summary>
+    /// <param name="inner">The inner actor reference to delegate to.</param>
+    public ActorReference(IActorReference inner)
     {
-        return Ask<TResponse>(request, null, timeout);
-    }
+        _collection = [];
 
-    /// <inheritdoc />
-    public TResponse Ask<TResponse>(
-        object request,
-        Dictionary<string, object>? metadata,
-        TimeSpan? timeout = null
-    )
-    {
-        using var cts = new CancellationTokenSource();
-        if (timeout.HasValue)
-        {
-            cts.CancelAfter(timeout.Value);
-        }
-
-        var task = AskAsync<TResponse>(request, metadata, cts.Token);
-        return task.GetAwaiter().GetResult();
-    }
-
-    /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
-        object request,
-        CancellationToken cancellationToken = default
-    )
-    {
-        return AskAsync<TResponse>(request, null, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async Task<TResponse> AskAsync<TResponse>(
-        object request,
-        Dictionary<string, object>? metadata,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var actorMessage = new AskMessage(request, metadata ?? [], cancellationToken);
-        await ExecuteAsync(actorMessage, cancellationToken);
-
-        var response = await actorMessage.AsTask();
-        if (response != null)
-        {
-            return (TResponse)response;
-        }
-
-        return default!;
-    }
-
-    /// <inheritdoc />
-    public bool Equals(IActorReference? other)
-    {
-        return ReferenceEquals(this, other);
-    }
-
-    /// <inheritdoc />
-    public void Tell(object message, TimeSpan? timeout = null)
-    {
-        Tell(message, null, timeout);
-    }
-
-    /// <inheritdoc />
-    public void Tell(object message, Dictionary<string, object>? metadata, TimeSpan? timeout = null)
-    {
-        using var cts = new CancellationTokenSource();
-        if (timeout.HasValue)
-        {
-            cts.CancelAfter(timeout.Value);
-        }
-
-        var val = TellAsync(message, metadata, cts.Token);
-        if (!val.IsCompleted)
-        {
-            val.AsTask().GetAwaiter().GetResult();
-        }
-    }
-
-    /// <inheritdoc />
-    public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
-    {
-        return TellAsync(message, null, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async ValueTask TellAsync(
-        object message,
-        Dictionary<string, object>? metadata,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var actorMessage = new TellMessage(message, metadata ?? [], CancellationToken.None);
-        await ExecuteAsync(actorMessage, cancellationToken);
+        _inner = inner;
+        _inner.Register(this);
     }
 
     /// <summary>
-    /// Raises the <see cref="Terminated"/> event to notify subscribers that this actor reference is being terminated.
+    /// Creates a new actor reference by resolving the name from the default registry.
     /// </summary>
-    /// <param name="reason">An optional reason describing why the actor is being terminated.</param>
-    public void Terminate(string? reason)
+    /// <param name="name">The actor name used for registry lookup.</param>
+    public ActorReference(string name)
+        : this(new Uri($"trupe://localhost/{name}"), ActorProcessRegistry.Instance)
     {
-        Terminated?.Invoke(this, new TerminatedEventArgs(this, reason));
     }
 
-    private async ValueTask ExecuteAsync(
-        IMessage message,
+    /// <summary>
+    /// Creates a new actor reference by resolving the URI from the default registry.
+    /// </summary>
+    /// <param name="name">The actor URI used for registry lookup.</param>
+    public ActorReference(Uri name)
+        : this(name, ActorProcessRegistry.Instance)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the name from the specified registry.
+    /// </summary>
+    /// <param name="name">The actor name used for registry lookup.</param>
+    /// <param name="registry">The registry to resolve the reference from.</param>
+    public ActorReference(string name, IActorProcessRegistry registry)
+        : this(new Uri($"trupe://localhost/{name}"), registry)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new actor reference by resolving the URI from the specified registry.
+    /// </summary>
+    /// <param name="name">The actor URI used for registry lookup.</param>
+    /// <param name="registry">The registry to resolve the reference from.</param>
+    public ActorReference(Uri name, IActorProcessRegistry registry)
+        : this(registry.GetReference(name))
+    {
+    }
+
+    /// <inheritdoc />
+    public Uri Name => _inner.Name;
+
+    /// <inheritdoc />
+    public TResponse? Ask<TResponse>(
+        object request,
+        Dictionary<string, object?>? metadata = null,
+        TimeSpan? timeout = null
+    )
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        return _inner.Ask<TResponse>(request, metadata, timeout);
+    }
+
+    /// <inheritdoc />
+    public Task<TResponse?> AskAsync<TResponse>(
+        object request,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {
-        await using var scope = provider.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
 
-        var pipelineFactory = sp.GetRequiredService<ISendPipelineFactory>();
-        var pipelineContextFactory = sp.GetRequiredService<ISendPipelineContextFactory>();
+        return _inner.AskAsync<TResponse>(request, metadata, cancellationToken);
+    }
 
-        var pipeline = pipelineFactory.Create(actorType, message.Payload.GetType());
-        var context = pipelineContextFactory.Create(
-            this,
-            actorType,
-            message,
-            [new MailboxMetadata(mailbox)],
-            cancellationToken
-        );
+    /// <inheritdoc />
+    public void Tell(
+        object message,
+        Dictionary<string, object?>? metadata = null,
+        TimeSpan? timeout = null
+    )
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
 
-        var accessor = sp.GetRequiredService<SettableSendPipelineContextAccessor>();
-        accessor.SendContext = context;
+        _inner.Tell(message, metadata, timeout);
+    }
 
-        try
+    /// <inheritdoc />
+    public ValueTask TellAsync(
+        object message,
+        Dictionary<string, object?>? metadata = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        return _inner.TellAsync(message, metadata, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Dispose(true);
+
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Releases managed resources held by this actor reference.
+    /// </summary>
+    /// <param name="disposing"><see langword="true"/> to release managed resources; otherwise <see langword="false"/>.</param>
+    private void Dispose(bool disposing)
+    {
+        if (_isDisposed)
         {
-            await pipeline.ExecuteAsync(context);
+            return;
         }
-        finally
+
+        if (disposing)
         {
-            accessor.SendContext = null;
+            ObjectDisposedGuard.Do(() => _inner.UnRegister(this));
+            _collection.Clear();
         }
+
+        _isDisposed = true;
+    }
+
+    /// <inheritdoc />
+    public void Stop()
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+        _inner.Stop();
+    }
+
+    /// <inheritdoc />
+    public async Task StopAsync()
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+        await _inner.StopAsync();
+    }
+
+    /// <inheritdoc />
+    public async Task KillAsync()
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+        await _inner.KillAsync();
+    }
+
+    /// <inheritdoc />
+    public void MarkAsTerminate(TerminatedReason reason)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+        _inner.MarkAsTerminate(reason);
+    }
+
+    /// <inheritdoc />
+    public IDisposable Register(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        return _collection.Add(listener);
+    }
+
+    /// <inheritdoc />
+    public void UnRegister(IActorReferenceListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        _collection.Remove(listener);
+    }
+
+    /// <inheritdoc />
+    public void OnTerminated(IActorReference reference, TerminatedReason reason)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
+
+        _collection.InvokeOnTerminated(this, reason);
     }
 }

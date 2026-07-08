@@ -1,2 +1,2 @@
-[assembly: Timeout(30_000)]
-// [assembly: NotInParallel]
+// [assembly: Timeout(30_000)]
+

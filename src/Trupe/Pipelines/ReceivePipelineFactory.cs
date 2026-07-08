@@ -27,13 +27,14 @@ public class ReceivePipelineFactory(IServiceProvider provider, IPipelineLookup l
     /// <returns>A new <see cref="IReceivePipeline"/> with resolved middleware instances.</returns>
     public IReceivePipeline Create(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,
-        Type messageType)
+        Type messageType
+    )
     {
         var types = GetMiddlewareTypes(actorType, messageType);
 
         return new ReceivePipeline(
             types
-                .Select(type => (IReceiveMiddleware)provider.GetRequiredService(type))
+                .Select(type => (IReceiveMiddleware)ServiceProvider.GetRequiredService(type))
                 .ToImmutableList()
         );
     }

@@ -1,6 +1,7 @@
 using System.Threading;
+using Trupe.Abstractions.Pipelines;
 
-namespace Trupe.Abstractions.Pipelines;
+namespace Trupe.Pipelines;
 
 /// <summary>
 /// Provides ambient access to the current <see cref="IReceivePipelineContext"/> using async-local storage.

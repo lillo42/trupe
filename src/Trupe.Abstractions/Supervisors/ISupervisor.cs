@@ -1,7 +1,6 @@
 using System.Collections.Generic;
-using Trupe.Abstractions;
 
-namespace Trupe;
+namespace Trupe.Abstractions.Supervisors;
 
 /// <summary>
 /// Represents a supervisor actor that manages child actors.

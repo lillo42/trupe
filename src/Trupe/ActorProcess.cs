@@ -5,13 +5,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Events;
 using Trupe.Abstractions.Mailboxes;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Abstractions.Pipelines.Metadatas;
 using Trupe.Abstractions.SystemMessages;
-using Trupe.Pipelines.Metadatas;
+using Trupe.Collections;
+using Trupe.Guards;
+using Trupe.Pipelines;
 
 namespace Trupe;
 
@@ -27,96 +28,46 @@ namespace Trupe;
 /// - Integration with AOT (Ahead-Of-Time) compilation constraints
 /// - Graceful cancellation and shutdown
 /// </remarks>
-public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
+public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyncDisposable
 {
-    /// <summary>
-    /// Cancellation token source used to signal the actor to stop processing messages.
-    /// </summary>
-    private CancellationTokenSource? _cts;
+    private readonly ActorProcessListenerCollection _collection = [];
 
-    /// <summary>
-    /// The task representing the actor's message processing loop.
-    /// </summary>
+    private bool _isDisposed;
+    private CancellationTokenSource? _cts;
     private Task? _executing;
 
-    /// <summary>
-    /// Event raised when an unhandled exception occurs during message processing.
-    /// </summary>
-    /// <remarks>
-    /// Subscribers can use this event to implement supervision strategies such as
-    /// restarting the actor, escalating the failure, or logging the error.
-    /// </remarks>
-    public event EventHandler<ActorFailureEventArgs>? Failed;
+    /// <inheritdoc />
+    public IMailbox Mailbox { get; set; } = mailbox;
 
-    /// <summary>
-    /// Event raised when the actor receives a <see cref="Terminate"/> message and stops processing.
-    /// </summary>
-    /// <remarks>
-    /// Subscribers can use this event to detect voluntary actor termination, as opposed to
-    /// failure-based termination signaled through the <see cref="Failed"/> event.
-    /// </remarks>
-    public event EventHandler<ActorTerminateEventArgs>? Terminated;
+    /// <inheritdoc />
+    public IActor Actor { get; set; } = actor;
 
-    /// <summary>
-    /// Gets a value indicating whether the actor's message processing loop is currently running.
-    /// </summary>
-    public bool IsRunning => _executing != null && !_executing.IsCompleted;
-
-    /// <summary>
-    /// Starts the actor's message processing loop.
-    /// </summary>
-    /// <param name="messages">
-    /// Optional initial messages to process before consuming from the mailbox.
-    /// These are typically system messages like <see cref="InitializeActor"/>.
-    /// </param>
-    /// <remarks>
-    /// <para>
-    /// This method is idempotent - calling it on an already running actor has no effect.
-    /// </para>
-    /// <para>
-    /// The actor will first process any provided initial messages, then begin
-    /// consuming and processing messages from its mailbox.
-    /// </para>
-    /// </remarks>
+    /// <inheritdoc />
     public async Task StartAsync(params IMessage[] messages)
     {
-        await StopAsync();
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
+        await KillAsync();
 
         _cts = new CancellationTokenSource();
-        _executing = Task.Run(() => RunAsync(new Queue<IMessage>(messages), _cts.Token));
+        _executing = Task.Run(async () =>
+        {
+            try
+            {
+                await RunAsync(new Queue<IMessage>(messages), _cts.Token);
+            }
+            catch
+            {
+                // Ignore any error, it's already catch by Run Async
+            }
+        });
     }
 
-    /// <summary>
-    /// Gracefully stops the actor process and waits for completion.
-    /// </summary>
-    /// <returns>A task that completes when the actor has stopped processing messages.</returns>
-    /// <remarks>
-    /// <para>
-    /// This method:
-    /// 1. Signals the cancellation token to stop processing new messages
-    /// 2. Waits for the current message processing loop to complete
-    /// 3. Ensures all resources are properly cleaned up
-    /// </para>
-    /// <para>
-    /// The actor will finish processing the current message (if any) before stopping,
-    /// but will not process any new messages that arrive after the cancellation is requested.
-    /// </para>
-    /// <para>
-    /// This method is safe to call multiple times and will do nothing if the actor is not running.
-    /// </para>
-    /// </remarks>
-    public async Task StopAsync()
+    /// <inheritdoc />
+    public async Task KillAsync()
     {
-        await StopAsync("Stop requested");
-    }
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
 
-    /// <summary>
-    /// Gracefully stops the actor process with the specified reason and waits for completion.
-    /// </summary>
-    /// <param name="reason">A description of why the actor is being stopped.</param>
-    /// <returns>A task that completes when the actor has stopped processing messages.</returns>
-    public async Task StopAsync(string? reason)
-    {
         if (
             _cts == null
             || _executing == null
@@ -142,30 +93,6 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
 
         _cts = null;
         _executing = null;
-
-        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
-    }
-
-    /// <summary>
-    /// Requests the actor to stop by signaling cancellation without waiting for the message loop to complete.
-    /// </summary>
-    /// <param name="reason">A description of why the stop was requested.</param>
-    /// <returns>A task that completes once the cancellation has been signaled.</returns>
-    public async Task RequestStopAsync(string reason)
-    {
-        if (
-            _cts == null
-            || _executing == null
-            || _cts.IsCancellationRequested
-            || _executing.IsCompleted
-        )
-        {
-            return;
-        }
-
-        await _cts.CancelAsync();
-
-        Terminated?.Invoke(this, new ActorTerminateEventArgs(actor, reason));
     }
 
     /// <summary>
@@ -188,15 +115,12 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
                 message.CancellationToken
             );
 
-            if (!await ProcessAsync(actor, message, cts.Token))
-            {
-                return;
-            }
+            await ProcessAsync(Actor, message, cts.Token);
         }
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var message = await mailbox.DequeueAsync(cancellationToken);
+            var message = await Mailbox.DequeueAsync(cancellationToken);
             if (message == null || message.CancellationToken.IsCancellationRequested)
             {
                 continue;
@@ -207,40 +131,41 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
                 message.CancellationToken
             );
 
-            if (!await ProcessAsync(actor, message, cts.Token))
+            if (message.Payload is Stop)
             {
-                break;
+                _collection.InvokeOnStopped(this, TerminatedReason.Stopped);
+                
+                if (message is IAskMessage askMessage)
+                {
+                    askMessage.SetResult(null);
+                }
+                
+                return;
             }
+            
+            await ProcessAsync(Actor, message, cts.Token);
         }
     }
 
-    /// <summary>
-    /// Processes a single message by dispatching it to the appropriate handler.
-    /// </summary>
-    /// <param name="actor">The actor instance to process the message.</param>
-    /// <param name="message">The message to process.</param>
-    /// <param name="cancellationToken">Token to cancel the processing.</param>
-    /// <remarks>
-    /// This method handles system messages (<see cref="InitializeActor"/>, <see cref="AfterRestartActor"/>),
-    /// typed message dispatch, and response handling for ask-pattern messages.
-    /// </remarks>
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2072:Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method",
         Justification = "Actor types are registered at startup and preserved by DI container registration."
     )]
-    private async ValueTask<bool> ProcessAsync(
+    private async ValueTask ProcessAsync(
         IActor actor,
         IMessage message,
         CancellationToken cancellationToken
     )
     {
+        var previousServiceProvider = actor.Context.ServiceProvider;
+        var previousMetadata = new Dictionary<string, object?>(actor.Context.Metadata);
+
         SettableReceivePipelineContextAccessor? accessor = null;
         var scope = GetOrCreateServiceScope(message);
         var serviceProvider = scope.ServiceProvider;
-        var previousActorContext = actor.Context;
-        actor.Context = new ActorContext(actor.Context.Self, actor.Context.Metadata, scope);
-
+        actor.Context.ServiceProvider = serviceProvider;
+        
         try
         {
             var pipelineFactory = serviceProvider.GetRequiredService<IReceivePipelineFactory>();
@@ -265,19 +190,26 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
             accessor.ReceiveContext = context;
 
             await pipeline.ExecuteAsync(context);
-
-            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            // It was requested to stop the process
+            if (message is IAskMessage askMessage)
+            {
+                askMessage.SetCanceled();
+            }
         }
         catch (Exception ex)
         {
-            Failed?.Invoke(this, new ActorFailureEventArgs(actor, message, ex));
-            return false;
+            _collection.InvokeOnFailed(this, message, ex);
+            throw;
         }
         finally
         {
             await DisposeContextIfNecessary(message, scope);
-            await DisposeContextIfNecessary(message, actor.Context);
-            actor.Context = previousActorContext;
+
+            actor.Context.Metadata = previousMetadata;
+            actor.Context.ServiceProvider = previousServiceProvider;
 
             if (accessor != null)
             {
@@ -290,13 +222,13 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     {
         if (message.Payload is IUseSameActorScopeServiceMessage)
         {
-            return new ActorServiceScope(actor.Context.ServiceProvider);
+            return new ActorServiceScope(Actor.Context.ServiceProvider);
         }
 
-        return actor.Context.ServiceProvider.CreateAsyncScope();
+        return Actor.Context.ServiceProvider.CreateAsyncScope();
     }
 
-    private async ValueTask DisposeContextIfNecessary(IMessage message, object obj)
+    private static async ValueTask DisposeContextIfNecessary(IMessage message, object obj)
     {
         if (message.Payload is not IUseSameActorScopeServiceMessage)
         {
@@ -304,7 +236,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
         }
     }
 
-    private async ValueTask DisposeAsync(object obj)
+    private static async ValueTask DisposeAsync(object obj)
     {
         try
         {
@@ -329,11 +261,40 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
+        await DisposeAsync(true);
+
         GC.SuppressFinalize(this);
+    }
 
-        await StopAsync();
+    private async ValueTask DisposeAsync(bool disposing)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
 
-        Failed = null;
-        Terminated = null;
+        if (disposing)
+        {
+            _collection.Clear();
+            await KillAsync();
+        }
+
+        _isDisposed = true;
+    }
+
+    /// <inheritdoc />
+    public IDisposable Register(IActorProcessListener listener)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
+        return _collection.Add(listener);
+    }
+
+    /// <inheritdoc />
+    public void UnRegister(IActorProcessListener listing)
+    {
+        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorProcess));
+
+        _collection.Remove(listing);
     }
 }

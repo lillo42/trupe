@@ -36,7 +36,7 @@ builder.Services.AddTrupe(config =>
 });
 
 // Add the hosted service separately
-builder.Services.AddActorSystemHostedSevice();
+builder.Services.AddActorSystemHostedService();
 ```
 
 ## How It Works

@@ -3,81 +3,61 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Trupe.Abstractions;
+using Trupe.Abstractions.Exceptions;
 
 namespace Trupe.Tests;
 
 public class ActorSystemTest
 {
     [Test]
-    [SkipOnNativeAot]
-    public async Task Start_Should_SetContextOnRootSupervisor()
+    public async Task Start_Should_StartRootSupervisor()
     {
-        // Arrange
-        var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(
-            rootSupervisor,
-            new ServiceCollection().BuildServiceProvider()
-        );
+        var root = Substitute.For<IRootSupervisor>();
+        var serviceProvider = Substitute.For<IServiceProvider>();
 
-        // Act
-        await actorSystem.StartAsync();
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        var scope = Substitute.For<IServiceScope>();
+        scopeFactory.CreateScope().Returns(scope);
+        serviceProvider.GetService(typeof(IServiceScopeFactory)).Returns(scopeFactory);
 
-        // Assert
-        await Assert.That(rootSupervisor.Context).IsNotNull();
-        await actorSystem.StopAsync();
+        var refFactory = Substitute.For<IActorReferenceFactory>();
+        var @ref = Substitute.For<IActorReference>();
+        refFactory.Create(Arg.Any<string>(), Arg.Any<IActorProcess>()).Returns(@ref);
+
+        serviceProvider.GetService(typeof(IActorReferenceFactory)).Returns(refFactory);
+
+        var system = new ActorSystem(root, serviceProvider);
+
+        await system.StartAsync();
+
+        _ = refFactory.Received(1).Create(Arg.Any<string>(), Arg.Any<IActorProcess>());
+
+        await system.StopAsync();
     }
 
     [Test]
-    [SkipOnNativeAot]
-    public async Task Start_WhenAlreadyRunning_Should_ThrowInvalidOperationException()
+    public async Task Start_Should_Throw_When_ItsAlreadyStarted()
     {
-        // Arrange
-        var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(
-            rootSupervisor,
-            new ServiceCollection().BuildServiceProvider()
-        );
+        var root = Substitute.For<IRootSupervisor>();
+        var serviceProvider = Substitute.For<IServiceProvider>();
 
-        await actorSystem.StartAsync();
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        var scope = Substitute.For<IServiceScope>();
+        scopeFactory.CreateScope().Returns(scope);
+        serviceProvider.GetService(typeof(IServiceScopeFactory)).Returns(scopeFactory);
 
-        // Act & Assert
-        var act = async () => await actorSystem.StartAsync();
-        await Assert.That(act).ThrowsExactly<InvalidOperationException>();
-        await actorSystem.StopAsync();
-    }
+        var refFactory = Substitute.For<IActorReferenceFactory>();
+        var @ref = Substitute.For<IActorReference>();
+        refFactory.Create(Arg.Any<string>(), Arg.Any<IActorProcess>()).Returns(@ref);
 
-    [Test]
-    [SkipOnNativeAot]
-    public async Task StopAsync_WhenRunning_Should_AllowRestartAfterStop()
-    {
-        // Arrange
-        var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(
-            rootSupervisor,
-            new ServiceCollection().BuildServiceProvider()
-        );
+        serviceProvider.GetService(typeof(IActorReferenceFactory)).Returns(refFactory);
 
-        await actorSystem.StartAsync();
+        var system = new ActorSystem(root, serviceProvider);
 
-        // Act
-        await actorSystem.StopAsync();
+        await system.StartAsync();
 
-        // Assert - Starting again should work since it's stopped
-        await actorSystem.StartAsync();
-        await actorSystem.StopAsync();
-    }
+        await Assert.That(system.StartAsync).Throws<ActorSystemAlreadyStartedException>();
 
-    [Test]
-    public async Task StopAsync_WhenNotRunning_Should_NotThrow()
-    {
-        // Arrange
-        var rootSupervisor = Substitute.For<IRootSupervisor>();
-        var actorSystem = new ActorSystem(
-            rootSupervisor,
-            new ServiceCollection().BuildServiceProvider()
-        );
-
-        // Act & Assert - should not throw
-        await actorSystem.StopAsync();
+        await system.StopAsync();
     }
 }

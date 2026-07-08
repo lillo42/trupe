@@ -72,7 +72,7 @@ public abstract class AbstractPipelineContextFactory(IPipelineLookup lookup)
     [UnconditionalSuppressMessage(
         "Aot",
         "IL3050:RequiresDynamicCode",
-        Justification = "The unfriendly method is not reachable with AOT"
+        Justification = "This method is only called when RuntimeFeature.IsDynamicCodeSupported is true."
     )]
     private static IEnumerable<MiddlewareAttribute> GetHandleMessageTyped(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type actorType,

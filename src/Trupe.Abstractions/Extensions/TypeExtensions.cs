@@ -1,5 +1,6 @@
 using System;
 using Trupe.Abstractions.Pipelines;
+using Trupe.Abstractions.Supervisors;
 
 namespace Trupe.Abstractions.Extensions;
 

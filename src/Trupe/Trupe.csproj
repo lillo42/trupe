@@ -2,10 +2,13 @@
 
   <PropertyGroup>
     <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
-     <IsAotCompatible>true</IsAotCompatible>
      <GenerateDocumentationFile>true</GenerateDocumentationFile>
      <Description>A lightweight, high-performance .NET actor model framework with supervision strategies, channel-based mailboxes, and AOT compatibility.</Description>
      <PackageTags>actor-model;actors;concurrency;message-passing;supervision;dotnet;trupe</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net462' OR '$(TargetFramework)' != 'netstandard2.0'">
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +18,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options"  />
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR  '$(TargetFramework)' == 'net462'">

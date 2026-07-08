@@ -1,44 +1,56 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using NSubstitute;
+using Trupe.Abstractions.Messages;
 using Trupe.Mailboxes;
-using Trupe.Messages;
 
 namespace Trupe.Tests.Mailboxes;
 
 public class ChannelMailboxTest
 {
     [Test]
-    [Timeout(5000)]
-    public async Task EnqueueDequeue_Should_Successed(CancellationToken cancellationToken)
+    public async Task EnqueueAsync_Should_Dequeue()
     {
         var mailbox = new ChannelMailbox();
+        var message = Substitute.For<IMessage>();
 
-        var message = new TellMessage(new object(), []);
+        await mailbox.EnqueueAsync(message);
 
-        await mailbox.EnqueueAsync(message, cancellationToken);
-
-        var dequeuedMessage = await mailbox.DequeueAsync(cancellationToken);
-        await Assert.That(dequeuedMessage).EqualTo(message);
+        await Assert
+            .That(async () => await mailbox.DequeueAsync())
+            .ThrowsNothing()
+            .And.IsEqualTo(message);
     }
 
     [Test]
-    [Timeout(5000)]
-    public async Task DequeueEnqueue_Should_Successed(CancellationToken cancellationToken)
+    public async Task EnqueueAsync_Should_FollowTheConfiguration()
     {
-        var mailbox = new ChannelMailbox();
-        var message = new TellMessage(new object(), []);
+        var mailbox = new ChannelMailbox(1);
 
-        var dequeueTask = Task.Run(
-            async () =>
-            {
-                var dequeuedMessage = await mailbox.DequeueAsync(cancellationToken);
-                await Assert.That(dequeuedMessage).EqualTo(message);
-            },
-            cancellationToken
-        );
+        await mailbox.EnqueueAsync(Substitute.For<IMessage>());
 
-        await mailbox.EnqueueAsync(message, cancellationToken);
+        var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+        var message = Substitute.For<IMessage>();
 
-        await dequeueTask;
+        await Assert
+            .That(async () => await mailbox.EnqueueAsync(message, cts.Token))
+            .Throws<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task DequeueAsync_Should_NotThrowAfterCancellationHasPass()
+    {
+        var mailbox = new ChannelMailbox(1);
+
+        var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+        var message = Substitute.For<IMessage>();
+
+        await Assert
+            .That(async () => await mailbox.DequeueAsync(cts.Token))
+            .ThrowsNothing()
+            .And.IsNull();
     }
 }

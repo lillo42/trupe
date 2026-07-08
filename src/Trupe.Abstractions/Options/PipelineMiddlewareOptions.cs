@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Trupe.Abstractions.Options;
 
@@ -32,11 +33,19 @@ public class PipelineMiddlewareConfiguration
     /// <summary>
     /// Gets or sets the concrete type of the middleware to instantiate.
     /// </summary>
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
     public Type MiddlewareType { get; set; } = typeof(object);
 
     /// <summary>
     /// Gets or sets the actor type this middleware targets, or <c>null</c> to apply to all actors.
     /// </summary>
+    [DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors
+            | DynamicallyAccessedMemberTypes.PublicMethods
+    )]
     public Type? ActorType { get; set; }
 
     /// <summary>

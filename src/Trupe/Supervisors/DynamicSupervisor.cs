@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using Trupe.Abstractions;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
-using Trupe.Supervisors.Commands;
+using Trupe.Abstractions.Supervisors.Commands;
 
 namespace Trupe.Supervisors;
 
@@ -15,12 +15,17 @@ namespace Trupe.Supervisors;
 /// Uses the <see cref="Strategy.OneForOne"/> supervision strategy.
 /// </summary>
 /// <param name="logger">The logger instance for logging supervisor activities.</param>
-public abstract class DynamicSupervisor(ILogger logger)
+public abstract partial class DynamicSupervisor(ILogger logger)
     : Supervisor(logger),
         IHandleActorMessage<RemoveChild>
 {
     /// <inheritdoc />
     protected sealed override Strategy Strategy => Strategy.OneForOne;
+
+    /// <summary>
+    /// Always returns <see langword="false"/> since dynamic supervisors allow adding children at any time.
+    /// </summary>
+    protected override bool Initialized => false;
 
     /// <summary>
     /// Handles the <see cref="RemoveChild"/> message by removing the specified child actor
@@ -33,115 +38,105 @@ public abstract class DynamicSupervisor(ILogger logger)
         CancellationToken cancellationToken = default
     )
     {
-        var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
-
-        if (child != null)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
+            Log.RemovingChild(Logger);
+            var child = Children.FirstOrDefault(x => x.Actor == message.Actor);
+
+            if (child == null)
+            {
+                Log.ChildNotFoundForRemoval(Logger);
+                return;
+            }
+
+            Log.DisposingChild(Logger, child.Actor.GetType(), child.Actor.Context.Name);
             Children = Children.Remove(child);
 
-            await StopActorAsync(child);
+            var ctx = child.Actor.Context;
+            await DisposeObjectAsync(child.Process);
             await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
-
-            await child.Process.DisposeAsync();
+            await DisposeObjectAsync(ctx);
 
             child.Actor = null!;
             child.Process = null!;
         }
-    }
-
-    /// <summary>
-    /// Adds a child actor by sending an <see cref="AddActor"/> command to this supervisor.
-    /// </summary>
-    /// <param name="specification">The specification defining the child actor to create.</param>
-    /// <returns>A reference to the newly created child actor.</returns>
-    protected override IActorReference AddChild(IChildSpecification specification)
-    {
-        var actorRef = new ActorReference(
-            specification.ActorType,
-            Context.ServiceProvider,
-            specification.Mailbox
-        );
-        Context.Self.Tell(new AddActor(specification, actorRef));
-
-        return actorRef;
     }
 
     /// <inheritdoc />
     /// <remarks>
     /// Removes temporary actors from the children list after failure.
     /// </remarks>
-    protected override async Task OnActorFailedAsync(
+    protected override async Task OnActorProcessFailedAsync(
         Child child,
         IMessage message,
         Exception exception,
         CancellationToken cancellationToken = default
     )
     {
-        await base.OnActorFailedAsync(child, message, exception, cancellationToken);
-
-        if (child.RestartPolicy == RestartPolicy.Temporary)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            Children = Children.Remove(child);
+            Log.HandlingActorProcessFailed(Logger, child.Actor.GetType(), child.Actor.Context.Name);
+            await base.OnActorProcessFailedAsync(child, message, exception, cancellationToken);
 
-            await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
+            if (child.RestartPolicy == RestartPolicy.Temporary)
+            {
+                Log.RemovingTemporaryChildAfterFailure(
+                    Logger,
+                    child.Actor.GetType(),
+                    child.Actor.Context.Name
+                );
+                Children = Children.Remove(child);
 
-            child.Actor = null!;
-            child.Process = null!;
+                var ctx = child.Actor.Context;
+                await DisposeObjectAsync(child.Process);
+                await DisposeObjectAsync(child.Actor);
+                await DisposeObjectAsync(ctx);
+
+                child.Actor = null!;
+                child.Process = null!;
+                Log.TemporaryChildRemovedAfterFailure(Logger);
+            }
         }
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// Removes non-permanent actors from the children list after termination.
+    /// Removes non-permanent actors from the children list after they are stopped.
     /// </remarks>
-    protected override async ValueTask OnActorTerminatedAsync(
+    protected override async ValueTask OnActorProcessStoppedAsync(
         Child child,
-        string? reason,
+        TerminatedReason reason,
         CancellationToken cancellationToken = default
     )
     {
-        await base.OnActorTerminatedAsync(child, reason, cancellationToken);
-        if (child.RestartPolicy != RestartPolicy.Permanent)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            Children = Children.Remove(child);
+            Log.HandlingActorProcessStopped(
+                Logger,
+                child.Actor.GetType(),
+                child.Actor.Context.Name,
+                reason
+            );
+            await base.OnActorProcessStoppedAsync(child, reason, cancellationToken);
 
-            await DisposeObjectAsync(child.Actor);
-            await DisposeObjectAsync(child.Actor.Context);
+            if (child.RestartPolicy != RestartPolicy.Permanent)
+            {
+                Log.RemovingNonPermanentChildAfterStop(
+                    Logger,
+                    child.Actor.GetType(),
+                    child.Actor.Context.Name
+                );
+                Children = Children.Remove(child);
 
-            child.Actor = null!;
-            child.Process = null!;
-        }
-    }
+                var ctx = child.Actor.Context;
+                await DisposeObjectAsync(child.Process);
+                await DisposeObjectAsync(child.Actor);
+                await DisposeObjectAsync(ctx);
 
-    /// <inheritdoc />
-    protected override ValueTask<IActorReference> AddChildAsync(
-        IChildSpecification specification,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var actorRef = new ActorReference(
-            specification.ActorType,
-            Context.ServiceProvider,
-            specification.Mailbox
-        );
-
-        var val = Context.Self.TellAsync(new AddActor(specification, actorRef), cancellationToken);
-
-        if (val.IsCompletedSuccessfully)
-        {
-            return new ValueTask<IActorReference>(actorRef);
-        }
-        else
-        {
-            return new ValueTask<IActorReference>(AwaitAddChildAsync(val.AsTask(), actorRef));
-        }
-
-        static async Task<IActorReference> AwaitAddChildAsync(Task val, IActorReference actorRef)
-        {
-            await val;
-            return actorRef;
+                child.Actor = null!;
+                child.Process = null!;
+                Log.NonPermanentChildRemovedAfterStop(Logger);
+            }
         }
     }
 
@@ -151,9 +146,16 @@ public abstract class DynamicSupervisor(ILogger logger)
     /// <param name="reference">The actor reference identifying the child actor to remove.</param>
     protected virtual void RemoveActor(IActorReference reference)
     {
-        var metadata = Children.FirstOrDefault(x => x.Reference == reference);
-        if (metadata != null)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
+            Log.SchedulingRemoveActor(Logger);
+            var metadata = Children.FirstOrDefault(x => x.Reference == reference);
+            if (metadata == null)
+            {
+                Log.ChildNotFoundForRemoval(Logger);
+                return;
+            }
+
             Context.Self.Tell(new RemoveChild(metadata.Actor));
         }
     }
@@ -164,17 +166,87 @@ public abstract class DynamicSupervisor(ILogger logger)
     /// <param name="reference">The actor reference identifying the child actor to remove.</param>
     /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
     /// <returns>A <see cref="ValueTask"/> that completes when the removal command has been sent.</returns>
-    protected virtual ValueTask RemoveActorAsync(
+    protected virtual async ValueTask RemoveActorAsync(
         IActorReference reference,
         CancellationToken cancellationToken = default
     )
     {
-        var child = Children.FirstOrDefault(x => x.Reference == reference);
-        if (child != null)
+        using (Logger.BeginScope("{SupervisorName}", Context.Name))
         {
-            return Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken);
-        }
+            Log.SchedulingRemoveActor(Logger);
+            var child = Children.FirstOrDefault(x => x.Reference == reference);
+            if (child == null)
+            {
+                Log.ChildNotFoundForRemoval(Logger);
+                return;
+            }
 
-        return new ValueTask();
+            await Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken: cancellationToken);
+        }
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(LogLevel.Information, "Removing child actor")]
+        public static partial void RemovingChild(ILogger logger);
+
+        [LoggerMessage(LogLevel.Debug, "Disposing {ActorType} actor '{ActorName}'")]
+        public static partial void DisposingChild(ILogger logger, Type actorType, Uri actorName);
+
+        [LoggerMessage(LogLevel.Information, "Child actor removed successfully")]
+        public static partial void ChildRemoved(ILogger logger);
+
+        [LoggerMessage(LogLevel.Warning, "Child actor not found for removal")]
+        public static partial void ChildNotFoundForRemoval(ILogger logger);
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Handling failed process for {ActorType} actor '{ActorName}'"
+        )]
+        public static partial void HandlingActorProcessFailed(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Removing temporary {ActorType} actor '{ActorName}' after failure"
+        )]
+        public static partial void RemovingTemporaryChildAfterFailure(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(LogLevel.Information, "Temporary child actor removed after failure")]
+        public static partial void TemporaryChildRemovedAfterFailure(ILogger logger);
+
+        [LoggerMessage(
+            LogLevel.Debug,
+            "Handling stopped process for {ActorType} actor '{ActorName}', reason: {Reason}"
+        )]
+        public static partial void HandlingActorProcessStopped(
+            ILogger logger,
+            Type actorType,
+            Uri actorName,
+            TerminatedReason reason
+        );
+
+        [LoggerMessage(
+            LogLevel.Information,
+            "Removing non-permanent {ActorType} actor '{ActorName}' after stop"
+        )]
+        public static partial void RemovingNonPermanentChildAfterStop(
+            ILogger logger,
+            Type actorType,
+            Uri actorName
+        );
+
+        [LoggerMessage(LogLevel.Information, "Non-permanent child actor removed after stop")]
+        public static partial void NonPermanentChildRemovedAfterStop(ILogger logger);
+
+        [LoggerMessage(LogLevel.Debug, "Scheduling child actor removal")]
+        public static partial void SchedulingRemoveActor(ILogger logger);
     }
 }
