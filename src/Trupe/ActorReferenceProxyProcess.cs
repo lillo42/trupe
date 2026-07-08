@@ -42,15 +42,9 @@ public class ActorReferenceProxyProcessor(
     public Uri Name => name;
 
     /// <inheritdoc />
-    public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
-    {
-        return Ask<TResponse>(request, null, timeout);
-    }
-
-    /// <inheritdoc />
-    public TResponse Ask<TResponse>(
+    public TResponse? Ask<TResponse>(
         object request,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
     {
@@ -67,18 +61,9 @@ public class ActorReferenceProxyProcessor(
     }
 
     /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
+    public async Task<TResponse?> AskAsync<TResponse>(
         object request,
-        CancellationToken cancellationToken = default
-    )
-    {
-        return AskAsync<TResponse>(request, null, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async Task<TResponse> AskAsync<TResponse>(
-        object request,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -97,15 +82,9 @@ public class ActorReferenceProxyProcessor(
     }
 
     /// <inheritdoc />
-    public void Tell(object message, TimeSpan? timeout = null)
-    {
-        Tell(message, null, timeout);
-    }
-
-    /// <inheritdoc />
     public void Tell(
         object message,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
     {
@@ -121,15 +100,9 @@ public class ActorReferenceProxyProcessor(
     }
 
     /// <inheritdoc />
-    public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
-    {
-        return TellAsync(message, null, cancellationToken);
-    }
-
-    /// <inheritdoc />
     public async ValueTask TellAsync(
         object message,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {

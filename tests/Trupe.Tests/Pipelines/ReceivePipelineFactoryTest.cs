@@ -8,7 +8,7 @@ using Trupe.Pipelines;
 
 namespace Trupe.Tests.Pipelines;
 
-public class ReceivePipelineFactoryTest
+public abstract class ReceivePipelineFactoryTest
 {
     [Test]
     public async Task Create_Should_ReturnPipelineWithMiddleware()
@@ -53,14 +53,14 @@ public class ReceivePipelineFactoryTest
         serviceProvider.DidNotReceive().GetService(typeof(MiddlewareE));
     }
 
-    public record MessageA();
+    public record MessageA;
 
-    public record MessageB();
+    public abstract record MessageB;
 
-    [GlobalMiddlawre]
+    [GlobalMiddleware]
     public class SomeActor : Actor, IHandleActorMessage<MessageA>, IHandleActorMessage<MessageB>
     {
-        [MiddlawreA]
+        [MiddlewareA]
         public ValueTask HandleAsync(
             MessageA message,
             CancellationToken cancellationToken = default
@@ -69,7 +69,7 @@ public class ReceivePipelineFactoryTest
             throw new NotImplementedException();
         }
 
-        [MiddlawreB]
+        [MiddlewareB]
         public ValueTask HandleAsync(
             MessageB message,
             CancellationToken cancellationToken = default
@@ -79,15 +79,15 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record GlobalMiddlewareMetadata();
+    private record GlobalMiddlewareMetadata;
 
-    public class GlobalMiddlawreAttribute() : MiddlewareAttribute(0)
+    private class GlobalMiddlewareAttribute() : MiddlewareAttribute(0)
     {
-        public override object? Metadata => new GlobalMiddlewareMetadata();
+        public override object Metadata => new GlobalMiddlewareMetadata();
         public override Type MiddlewareType => typeof(GlobalMiddleware);
     }
 
-    public class GlobalMiddleware : IReceiveMiddleware
+    private class GlobalMiddleware : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -95,15 +95,15 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record MiddlewareAMetadata();
+    private record MiddlewareAMetadata;
 
-    public class MiddlawreAAttribute() : MiddlewareAttribute(1)
+    private class MiddlewareAAttribute() : MiddlewareAttribute(1)
     {
-        public override object? Metadata => new MiddlewareAMetadata();
+        public override object Metadata => new MiddlewareAMetadata();
         public override Type MiddlewareType => typeof(MiddlewareA);
     }
 
-    public class MiddlewareA : IReceiveMiddleware
+    private class MiddlewareA : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -111,15 +111,15 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record MiddlewareBMetadata();
+    private record MiddlewareBMetadata;
 
-    public class MiddlawreBAttribute() : MiddlewareAttribute(1)
+    private class MiddlewareBAttribute() : MiddlewareAttribute(1)
     {
-        public override object? Metadata => new MiddlewareBMetadata();
+        public override object Metadata => new MiddlewareBMetadata();
         public override Type MiddlewareType => typeof(MiddlewareB);
     }
 
-    public class MiddlewareB : IReceiveMiddleware
+    private class MiddlewareB : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -127,9 +127,9 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record MiddlewareCMetadata();
+    private record MiddlewareCMetadata;
 
-    public class MiddlewareC : IReceiveMiddleware
+    private class MiddlewareC : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -137,9 +137,9 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record MiddlewareDMetadata();
+    private record MiddlewareDMetadata;
 
-    public class MiddlewareD : IReceiveMiddleware
+    private class MiddlewareD : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -147,9 +147,9 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record MiddlewareEMetadata();
+    public record MiddlewareEMetadata;
 
-    public class MiddlewareE : IReceiveMiddleware
+    private class MiddlewareE : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -157,7 +157,7 @@ public class ReceivePipelineFactoryTest
         }
     }
 
-    public record SomeMetadata();
+    public record SomeMetadata;
 
-    public record OtherMetadata();
+    public record OtherMetadata;
 }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using Trupe.Abstractions;
 
 namespace Trupe.Tests;
@@ -19,10 +18,10 @@ public class ActorReferences
         var req = new SomeRequest();
         var timeout = TimeSpan.FromSeconds(1);
 
-        @ref.Tell(req, timeout);
-        inner.Received(1).Tell(req, timeout);
+        @ref.Tell(req, timeout: timeout);
+        inner.Received(1).Tell(req, Arg.Any<Dictionary<string, object?>>(), timeout);
 
-        var metadata = new Dictionary<string, object?> { ["Some"] = new object() };
+        var metadata = new Dictionary<string, object?> { ["Some"] = new() };
         @ref.Tell(req, metadata, timeout);
         inner.Received(1).Tell(req, metadata, timeout);
     }
@@ -35,10 +34,10 @@ public class ActorReferences
         var @ref = new ActorReference(inner);
 
         var req = new SomeRequest();
-        var token = new CancellationToken();
+        var token = CancellationToken.None;
 
-        await @ref.TellAsync(req, token);
-        await inner.Received(1).TellAsync(req, token);
+        await @ref.TellAsync(req, cancellationToken: token);
+        await inner.Received(1).TellAsync(req, Arg.Any<Dictionary<string, object?>>(), token);
 
         var metadata = new Dictionary<string, object?> { ["Some"] = new object() };
         await @ref.TellAsync(req, metadata, token);
@@ -52,7 +51,8 @@ public class ActorReferences
 
         var response = new SomeResponse();
 
-        inner.Ask<SomeResponse>(Arg.Any<object>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<TimeSpan>()).Returns(response);
+        inner.Ask<SomeResponse>(Arg.Any<object>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<TimeSpan>())
+            .Returns(response);
         inner
             .Ask<SomeResponse>(
                 Arg.Any<object>(),
@@ -84,7 +84,9 @@ public class ActorReferences
         var response = new SomeResponse();
 
         inner
-            .AskAsync<SomeResponse>(Arg.Any<object>(), Arg.Any<CancellationToken>())
+            .AskAsync<SomeResponse>(Arg.Any<object>(),
+                Arg.Any<Dictionary<string, object?>>(),
+                Arg.Any<CancellationToken>())
             .Returns(response);
 
         inner
@@ -98,10 +100,10 @@ public class ActorReferences
         var @ref = new ActorReference(inner);
 
         var req = new SomeRequest();
-        var token = new CancellationToken();
+        var token = CancellationToken.None;
 
-        var resp = await @ref.AskAsync<SomeResponse>(req, token);
-        await inner.Received(1).AskAsync<SomeResponse>(req, token);
+        var resp = await @ref.AskAsync<SomeResponse>(req, cancellationToken: token);
+        await inner.Received(1).AskAsync<SomeResponse>(req, Arg.Any<Dictionary<string, object?>>(), token);
         await Assert.That(resp).IsEqualTo(response);
 
         var metadata = new Dictionary<string, object?> { ["Some"] = new object() };
@@ -155,7 +157,7 @@ public class ActorReferences
     }
 
     [Test]
-    public async Task Register_Should_InvokeTheListener_When_OnTerminatedIsCalled()
+    public void Register_Should_InvokeTheListener_When_OnTerminatedIsCalled()
     {
         var listener = Substitute.For<IActorReferenceListener>();
         var inner = Substitute.For<IActorReference>();
@@ -168,7 +170,7 @@ public class ActorReferences
     }
 
     [Test]
-    public async Task UnRegister_Should_NotInvokeTheListener_When_OnTerminatedIsCalled()
+    public void UnRegister_Should_NotInvokeTheListener_When_OnTerminatedIsCalled()
     {
         var listener = Substitute.For<IActorReferenceListener>();
         var inner = Substitute.For<IActorReference>();
@@ -183,7 +185,6 @@ public class ActorReferences
             .OnTerminated(Arg.Any<IActorReference>(), Arg.Any<TerminatedReason>());
     }
 
-    public record SomeRequest();
-
-    public record SomeResponse();
+    public record SomeRequest;
+    public  record SomeResponse;
 }

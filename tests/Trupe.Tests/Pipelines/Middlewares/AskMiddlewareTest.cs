@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using NSubstitute;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Exceptions;
 using Trupe.Abstractions.Pipelines;
 using Trupe.Messages;
 using Trupe.Pipelines.Middlewares;
@@ -32,22 +31,6 @@ public class AskMiddlewareTest
                 await middleware.InvokeAsync(context, _ => throw new SomeAskException())
             )
             .Throws<SomeAskException>();
-    }
-
-    [Test]
-    public async Task InvokeAsync_Should_NotCathException_When_MessageIsAskAndNonAskException()
-    {
-        var middleware = new AskMiddleware();
-
-        var message = new AskMessage(new object(), [], CancellationToken.None);
-        var context = Substitute.For<IReceivePipelineContext>();
-        context.Message.Returns(message);
-
-        await Assert
-            .That(async () =>
-                await middleware.InvokeAsync(context, _ => throw new InvalidOperationException())
-            )
-            .Throws<InvalidOperationException>();
     }
 
     [Test]
@@ -89,5 +72,5 @@ public class AskMiddlewareTest
         await Assert.That(message.AsTask).ThrowsNothing().And.IsEqualTo(response);
     }
 
-    public class SomeAskException : AskException { }
+    private class SomeAskException : Exception;
 }

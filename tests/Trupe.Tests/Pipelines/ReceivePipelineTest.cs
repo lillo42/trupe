@@ -24,10 +24,10 @@ public class ReceivePipelineTest
 
         await Assert
             .That(middlewares)
-            .All(x => x is SomeMiddleware someMiddleware && someMiddleware.Invoked == true);
+            .All(x => x is SomeMiddleware someMiddleware && someMiddleware.Invoked);
     }
 
-    public class SomeMiddleware : IReceiveMiddleware
+    private class SomeMiddleware : IReceiveMiddleware
     {
         public bool Invoked { get; private set; }
 

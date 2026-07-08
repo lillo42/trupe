@@ -202,11 +202,6 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         catch (Exception ex)
         {
             _collection.InvokeOnFailed(this, message, ex);
-            if (message is IAskMessage askMessage)
-            {
-                askMessage.SetException(ex);
-            }
-            
             throw;
         }
         finally

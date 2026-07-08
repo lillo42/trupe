@@ -70,7 +70,10 @@ public class SendPipelineTest
             ["TestContext"] = nameof(PipelineRunInvokeAllSent)
         }, cancellationToken);
         
-        await Assert.That(pong.Message).IsEqualTo(nameof(PipelineRunInvokeAllSent));
+        await Assert.That(pong)
+            .IsNotNull()
+            .And.Member(x => x.Message, 
+                y => y.IsEqualTo(nameof(PipelineRunInvokeAllSent)));
         
         var interceptor = _serviceProvider.GetRequiredService<Interceptor>();
 

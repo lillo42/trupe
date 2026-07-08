@@ -27,7 +27,7 @@ public class SendPipelineTest
             .All(x => x is SomeMiddleware someMiddleware && someMiddleware.Invoked == true);
     }
 
-    public class SomeMiddleware : ISendMiddleware
+    private class SomeMiddleware : ISendMiddleware
     {
         public bool Invoked { get; private set; }
 

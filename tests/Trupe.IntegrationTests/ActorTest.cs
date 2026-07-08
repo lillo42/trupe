@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Trupe.Abstractions;
-using Trupe.Abstractions.Exceptions;
 using Trupe.Extensions;
 
 namespace Trupe.IntegrationTests;
@@ -100,7 +99,7 @@ public class ActorTest
 
     public record RaiseFailure;
 
-    public class CustomAskException : AskException;
+    public class CustomAskException : Exception;
 
     public class CustomActor : Actor, IHandleActorMessage<Echo>,
         IHandleActorMessage<Ping>,

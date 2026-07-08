@@ -16,7 +16,7 @@ namespace Trupe.Tests;
 public class ActorReferenceProxyProcessorTest
 {
     [Test]
-    public async Task Ask_Should_BeExecutedWithSucess()
+    public async Task Ask_Should_BeExecutedWithSuccess()
     {
         AskMessage? message = null;
         var pipelineContextFactory = Substitute.For<ISendPipelineContextFactory>();
@@ -36,7 +36,7 @@ public class ActorReferenceProxyProcessorTest
         var pipeline = Substitute.For<ISendPipeline>();
         pipeline
             .When(async x => await x.ExecuteAsync(Arg.Any<ISendPipelineContext>()))
-            .Do(x => message!.SetResult(expecetedResponse));
+            .Do(_ => message!.SetResult(expecetedResponse));
 
         var serviceProvider = CreateScope(pipeline, pipelineContextFactory);
 
@@ -92,7 +92,7 @@ public class ActorReferenceProxyProcessorTest
         var pipeline = Substitute.For<ISendPipeline>();
         pipeline
             .When(async x => await x.ExecuteAsync(Arg.Any<ISendPipelineContext>()))
-            .Do(x => message!.SetResult(expecetedResponse));
+            .Do(_ => message!.SetResult(expecetedResponse));
 
         var serviceProvider = CreateScope(pipeline, pipelineContextFactory);
 
@@ -159,7 +159,7 @@ public class ActorReferenceProxyProcessorTest
     }
 
     [Test]
-    public async Task Stop_Should_UseTell()
+    public void Stop_Should_UseTell()
     {
         var pipelineContextFactory = Substitute.For<ISendPipelineContextFactory>();
 
@@ -186,7 +186,7 @@ public class ActorReferenceProxyProcessorTest
     }
 
     [Test]
-    public async Task Register_Should_InvokeTheListener_When_MarkAsTerminateIsCalled()
+    public void Register_Should_InvokeTheListener_When_MarkAsTerminateIsCalled()
     {
         var listener = Substitute.For<IActorReferenceListener>();
         var @ref = new ActorReferenceProxyProcessor(
@@ -203,7 +203,7 @@ public class ActorReferenceProxyProcessorTest
     }
 
     [Test]
-    public async Task UnRegister_Should_NotInvokeTheListener_When_MarkAsTerminateIsCalled()
+    public void UnRegister_Should_NotInvokeTheListener_When_MarkAsTerminateIsCalled()
     {
         var listener = Substitute.For<IActorReferenceListener>();
         var @ref = new ActorReferenceProxyProcessor(
@@ -338,9 +338,9 @@ public class ActorReferenceProxyProcessorTest
         return serviceProvider;
     }
 
-    public class SomeActor : Actor { }
+    public class SomeActor : Actor;
 
-    public record SomeRequest();
+    private record SomeRequest;
 
-    public record SomeResponse();
+    private record SomeResponse;
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -52,15 +54,16 @@ public class ActorContextTest
 
         var otherRef = Substitute.For<IActorReference>();
         context.OnTerminated(otherRef, TerminatedReason.Stopped);
+        
+        // Waiting the message to be propagated
+        await Task.Delay(TimeSpan.FromSeconds(1));
 
-        @ref.Received(1)
-            .Tell(
-                Arg.Is<object>(x =>
+        await @ref.Received(1)
+            .TellAsync(Arg.Is<object>(x =>
                     x is ActorTerminated
                     && ((ActorTerminated)x).Reference == otherRef
-                    && ((ActorTerminated)x).Reason == TerminatedReason.Stopped
-                ),
-                Arg.Any<TimeSpan?>()
-            );
+                    && ((ActorTerminated)x).Reason == TerminatedReason.Stopped),
+                Arg.Any<Dictionary<string, object?>?>(),
+                Arg.Any<CancellationToken>());
     }
 }

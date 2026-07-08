@@ -106,15 +106,15 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MessageA();
+    private record MessageA;
 
-    public record MessageB();
+    private record MessageB;
 
-    [GlobalMiddlawre]
-    [GlobalReceiveMiddlawre]
-    public class SomeActor : Actor, IHandleActorMessage<MessageA>, IHandleActorMessage<MessageB>
+    [GlobalMiddleware]
+    [GlobalReceiveMiddleware]
+    private class SomeActor : Actor, IHandleActorMessage<MessageA>, IHandleActorMessage<MessageB>
     {
-        [MiddlawreA]
+        [MiddlewareA]
         public ValueTask HandleAsync(
             MessageA message,
             CancellationToken cancellationToken = default
@@ -123,7 +123,7 @@ public class SendPipelineContextFactoryTest
             throw new NotImplementedException();
         }
 
-        [MiddlawreB]
+        [MiddlewareB]
         public ValueTask HandleAsync(
             MessageB message,
             CancellationToken cancellationToken = default
@@ -133,15 +133,15 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record GlobalMiddlewareMetadata();
+    private record GlobalMiddlewareMetadata;
 
-    public class GlobalMiddlawreAttribute() : MiddlewareAttribute(0)
+    private class GlobalMiddlewareAttribute() : MiddlewareAttribute(0)
     {
-        public override object? Metadata => new GlobalMiddlewareMetadata();
+        public override object Metadata => new GlobalMiddlewareMetadata();
         public override Type MiddlewareType => typeof(GlobalMiddleware);
     }
 
-    public class GlobalMiddleware : ISendMiddleware
+    private class GlobalMiddleware : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -149,15 +149,15 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record GlobalReceiveMiddlewareMetadata();
+    private record GlobalReceiveMiddlewareMetadata;
 
-    public class GlobalReceiveMiddlawreAttribute() : MiddlewareAttribute(0)
+    private class GlobalReceiveMiddlewareAttribute() : MiddlewareAttribute(0)
     {
-        public override object? Metadata => new GlobalReceiveMiddlewareMetadata();
+        public override object Metadata => new GlobalReceiveMiddlewareMetadata();
         public override Type MiddlewareType => typeof(GlobalReceiveMiddleware);
     }
 
-    public class GlobalReceiveMiddleware : IReceiveMiddleware
+    private class GlobalReceiveMiddleware : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -165,15 +165,15 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MiddlewareAMetadata();
+    private record MiddlewareAMetadata;
 
-    public class MiddlawreAAttribute() : MiddlewareAttribute(1)
+    private class MiddlewareAAttribute() : MiddlewareAttribute(1)
     {
-        public override object? Metadata => new MiddlewareAMetadata();
+        public override object Metadata => new MiddlewareAMetadata();
         public override Type MiddlewareType => typeof(MiddlewareA);
     }
 
-    public class MiddlewareA : ISendMiddleware
+    private class MiddlewareA : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -181,15 +181,15 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MiddlewareBMetadata();
+    private record MiddlewareBMetadata;
 
-    public class MiddlawreBAttribute() : MiddlewareAttribute(1)
+    private class MiddlewareBAttribute() : MiddlewareAttribute(1)
     {
-        public override object? Metadata => new MiddlewareBMetadata();
+        public override object Metadata => new MiddlewareBMetadata();
         public override Type MiddlewareType => typeof(MiddlewareB);
     }
 
-    public class MiddlewareB : ISendMiddleware
+    private class MiddlewareB : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -197,9 +197,9 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MiddlewareCMetadata();
+    private record MiddlewareCMetadata;
 
-    public class MiddlewareC : ISendMiddleware
+    private class MiddlewareC : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -207,9 +207,9 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MiddlewareDMetadata();
+    private record MiddlewareDMetadata;
 
-    public class MiddlewareD : ISendMiddleware
+    private class MiddlewareD : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -217,9 +217,9 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record MiddlewareEMetadata();
+    private record MiddlewareEMetadata;
 
-    public class MiddlewareE : ISendMiddleware
+    private class MiddlewareE : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -227,7 +227,7 @@ public class SendPipelineContextFactoryTest
         }
     }
 
-    public record SomeMetadata();
+    private record SomeMetadata;
 
-    public record OtherMetadata();
+    private record OtherMetadata;
 }

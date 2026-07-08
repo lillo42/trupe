@@ -91,15 +91,15 @@ public class PipelineRegistryTest
             .And.Contains(x => x.MiddlewareType == typeof(MiddlewareB));
     }
 
-    public record SomeRequest();
+    private record SomeRequest;
 
-    public record OtherRequest();
+    private record OtherRequest;
 
-    public class ActorA : Actor { }
+    private class ActorA : Actor;
 
-    public class ActorB : Actor { }
+    private class ActorB : Actor;
 
-    public class MiddlewareA : IReceiveMiddleware
+    private class MiddlewareA : IReceiveMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -107,7 +107,7 @@ public class PipelineRegistryTest
         }
     }
 
-    public class MiddlewareB : ISendMiddleware
+    private class MiddlewareB : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {
@@ -115,7 +115,7 @@ public class PipelineRegistryTest
         }
     }
 
-    public class MiddlewareGlobal : IReceiveMiddleware, ISendMiddleware
+    private class MiddlewareGlobal : IReceiveMiddleware, ISendMiddleware
     {
         public ValueTask InvokeAsync(IReceivePipelineContext context, NextReceiveDelegate next)
         {
@@ -128,7 +128,7 @@ public class PipelineRegistryTest
         }
     }
 
-    public class MiddlewareSomeRequest : ISendMiddleware
+    private class MiddlewareSomeRequest : ISendMiddleware
     {
         public ValueTask InvokeAsync(ISendPipelineContext context, NextSendDelegate next)
         {

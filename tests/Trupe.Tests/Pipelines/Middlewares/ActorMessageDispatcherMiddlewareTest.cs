@@ -117,9 +117,9 @@ public class ActorMessageDispatcherMiddlewareTest
         await Assert.That(actor.InvokedViaGeneric).IsTrue();
     }
 
-    public record SomeRequest { }
+    public record SomeRequest;
 
-    public record OtherRequest { }
+    public record OtherRequest;
 
     public class SomeActor : Actor, IHandleActorMessage<SomeRequest>
     {

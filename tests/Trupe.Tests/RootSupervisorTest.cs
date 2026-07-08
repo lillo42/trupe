@@ -85,7 +85,7 @@ public class RootSupervisorTest
             );
     }
 
-    public class SomeActor : Actor { }
+    public class SomeActor : Actor;
 
-    public class OtherActor : Actor { }
+    public class OtherActor : Actor;
 }

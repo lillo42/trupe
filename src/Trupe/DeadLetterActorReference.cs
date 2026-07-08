@@ -17,14 +17,56 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     public Uri Name => name;
 
     /// <inheritdoc />
-    public TResponse Ask<TResponse>(object request, TimeSpan? timeout = null)
+    public TResponse? Ask<TResponse>(
+        object request,
+        Dictionary<string, object?>? metadata = null,
+        TimeSpan? timeout = null
+    )
     {
-        throw new NotImplementedException();
+        return default;
     }
 
     /// <inheritdoc />
-    public TResponse Ask<TResponse>(
+    public Task<TResponse?> AskAsync<TResponse>(
         object request,
+        Dictionary<string, object?>? metadata = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        return Task.FromResult<TResponse?>(default);
+    }
+
+    /// <inheritdoc />
+    public Task KillAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public void MarkAsTerminate(TerminatedReason reason)
+    {
+    }
+
+    /// <inheritdoc />
+    public IDisposable Register(IActorReferenceListener listener)
+    {
+        return new DeadLetterRegister();
+    }
+
+    /// <inheritdoc />
+    public void Stop()
+    {
+    }
+
+    /// <inheritdoc />
+    public Task StopAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public void Tell(
+        object message,
         Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
@@ -33,89 +75,25 @@ public class DeadLetterActorReference(Uri name) : IActorReference
     }
 
     /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
-        object request,
-        CancellationToken cancellationToken = default
-    )
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
-        object request,
-        Dictionary<string, object?>? metadata,
-        CancellationToken cancellationToken = default
-    )
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public Task KillAsync()
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public void MarkAsTerminate(TerminatedReason reason)
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public IDisposable Register(IActorReferenceListener listener)
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public void Stop()
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public Task StopAsync()
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public void Tell(object message, TimeSpan? timeout = null)
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public void Tell(
-        object message,
-        Dictionary<string, object?>? metadata,
-        TimeSpan? timeout = null
-    )
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
-    public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <inheritdoc />
     public ValueTask TellAsync(
         object message,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {
-        throw new NotImplementedException();
+        return new ValueTask();
     }
 
     /// <inheritdoc />
     public void UnRegister(IActorReferenceListener listener)
     {
-        throw new NotImplementedException();
+    }
+    
+    private class DeadLetterRegister : IDisposable
+    {
+        public void Dispose()
+        {
+            
+        }
     }
 }

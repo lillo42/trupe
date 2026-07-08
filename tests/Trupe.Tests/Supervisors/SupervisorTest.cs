@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,7 +74,9 @@ public class SupervisorTest
         await supervisor.InitializeAsync();
 
         // OnInitializeAsync adds ActorA and ActorB via AddChildAsync, each calls TellAsync on Self
-        await reference.Received(2).TellAsync(Arg.Any<AddActor>(), Arg.Any<CancellationToken>());
+        await reference.Received(2).TellAsync(Arg.Any<AddActor>(),
+            Arg.Any<Dictionary<string, object?>?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -175,7 +178,7 @@ public class SupervisorTest
     }
 
     [Test]
-    public async Task AddChild_Should_CreateActorViaFactory()
+    public void AddChild_Should_CreateActorViaFactory()
     {
         var actorFactory = Substitute.For<IActorFactory>();
         actorFactory.CreateActor(typeof(ActorA)).Returns(_ => new ActorA());
@@ -192,7 +195,7 @@ public class SupervisorTest
     }
 
     [Test]
-    public async Task AddChild_Should_TellSelfWithAddActorCommand()
+    public void AddChild_Should_TellSelfWithAddActorCommand()
     {
         var reference = Substitute.For<IActorReference>();
         var supervisor = new SupervisorA(Substitute.For<ILogger<SupervisorA>>())
@@ -216,7 +219,9 @@ public class SupervisorTest
 
         await supervisor.TryAddAsync<ActorA>();
 
-        await reference.Received(1).TellAsync(Arg.Any<AddActor>(), Arg.Any<CancellationToken>());
+        await reference.Received(1).TellAsync(Arg.Any<AddActor>(),
+            Arg.Any<Dictionary<string, object?>?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -357,7 +362,7 @@ public class SupervisorTest
         }
     }
 
-    public record MessageA();
+    public record MessageA;
 
     public class ActorA : Actor, IHandleActorMessage<MessageA>
     {

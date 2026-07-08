@@ -34,11 +34,11 @@ public interface IActorContext
     /// </summary>
     /// <remarks>
     /// <para>
-    /// If the current message was sent via <see cref="IActorReference.Ask{TResponse}(object, TimeSpan?)"/>,
+    /// If the current message was sent via <see cref="IActorReference.Ask{TResponse}"/>,
     /// setting this property will result in the sender's awaited task completing with this value.
     /// </para>
     /// <para>
-    /// If the message was sent via <see cref="IActorReference.Tell(object, TimeSpan?)"/> (Fire-and-Forget),
+    /// If the message was sent via <see cref="IActorReference.Tell"/> (Fire-and-Forget),
     /// setting this property usually has no effect, as there is no receiver waiting for a result.
     /// </para>
     /// </remarks>

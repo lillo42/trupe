@@ -54,7 +54,7 @@ public interface IActorReference
     /// <remarks>
     /// <para>
     /// This method blocks the calling thread until a response is received or the timeout expires.
-    /// For non-blocking alternatives, use <see cref="AskAsync{TResponse}(object, CancellationToken)"/>.
+    /// For non-blocking alternatives, use <see cref="AskAsync{TResponse}"/>.
     /// </para>
     /// <para>
     /// The ask pattern creates a temporary actor to handle the response, which is automatically
@@ -62,35 +62,7 @@ public interface IActorReference
     /// </para>
     /// <exception cref="TimeoutException">Thrown when the specified timeout expires before receiving a response.</exception>
     /// </remarks>
-    TResponse Ask<TResponse>(object request, Dictionary<string, object?>? metadata = null, TimeSpan? timeout = null);
-
-    /// <summary>
-    /// Asynchronously sends a request message to the actor and waits for a response.
-    /// </summary>
-    /// <typeparam name="TResponse">The type of the expected response.</typeparam>
-    /// <param name="request">The request message to send to the actor.</param>
-    /// <param name="cancellationToken">
-    /// A cancellation token that can be used to cancel the operation.
-    /// If cancelled, the operation throws <see cref="OperationCanceledException"/>.
-    /// </param>
-    /// <returns>
-    /// A <see cref="ValueTask{TResult}"/> that represents the asynchronous operation,
-    /// containing the response from the actor.
-    /// </returns>
-    /// <remarks>
-    /// <para>
-    /// This is the preferred method for request-response patterns in async contexts,
-    /// as it doesn't block the calling thread and integrates well with async/await.
-    /// </para>
-    /// <para>
-    /// Like <see cref="Ask{TResponse}(object, TimeSpan?)"/>, this method creates
-    /// a temporary actor to handle the response, which is automatically cleaned up.
-    /// </para>
-    /// </remarks>
-    Task<TResponse> AskAsync<TResponse>(
-        object request,
-        CancellationToken cancellationToken = default
-    );
+    TResponse? Ask<TResponse>(object request, Dictionary<string, object?>? metadata = null, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a request message with metadata to the actor and waits for a response.
@@ -100,22 +72,11 @@ public interface IActorReference
     /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <returns>A <see cref="ValueTask{TResult}"/> containing the response from the actor.</returns>
-    Task<TResponse> AskAsync<TResponse>(
+    Task<TResponse?> AskAsync<TResponse>(
         object request,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     );
-
-    /// <summary>
-    /// Sends a message to the actor using fire-and-forget semantics with a timeout
-    /// for message delivery to the mailbox.
-    /// </summary>
-    /// <param name="message">The message to send to the actor.</param>
-    /// <param name="timeout">
-    /// The maximum time to wait for the message to be enqueued in the actor's mailbox.
-    /// If <see langword="null"/>, the method will wait indefinitely.
-    /// </param>
-    void Tell(object message, TimeSpan? timeout = null);
 
     /// <summary>
     /// Sends a message with metadata to the actor using fire-and-forget semantics.
@@ -126,37 +87,7 @@ public interface IActorReference
     /// The maximum time to wait for the message to be enqueued in the actor's mailbox.
     /// If <see langword="null"/>, the method will wait indefinitely.
     /// </param>
-    void Tell(object message, Dictionary<string, object?>? metadata, TimeSpan? timeout = null);
-
-    /// <summary>
-    /// Asynchronously sends a message to the actor using fire-and-forget semantics
-    /// with cancellation support.
-    /// </summary>
-    /// <param name="message">The message to send to the actor.</param>
-    /// <param name="cancellationToken">
-    /// A cancellation token that can be used to cancel the enqueue operation.
-    /// Note: Cancellation only affects message delivery to the mailbox, not message processing.
-    /// </param>
-    /// <returns>
-    /// A <see cref="ValueTask"/> that completes when the message has been queued
-    /// in the actor's mailbox or when the operation is cancelled.
-    /// </returns>
-    /// <remarks>
-    /// <para>
-    /// This overload provides cancellation support for the message delivery operation.
-    /// If the cancellation token is triggered before the message is enqueued, the
-    /// operation will be cancelled and the message will not be delivered.
-    /// </para>
-    /// <para>
-    /// Once the message is successfully enqueued, cancellation no longer applies
-    /// and the actor will process the message normally.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when the operation is cancelled via the provided <paramref name="cancellationToken"/>
-    /// before the message is successfully enqueued.
-    /// </exception>
-    ValueTask TellAsync(object message, CancellationToken cancellationToken = default);
+    void Tell(object message, Dictionary<string, object?>? metadata = null, TimeSpan? timeout = null);
 
     /// <summary>
     /// Asynchronously sends a message with metadata to the actor using fire-and-forget semantics.
@@ -165,11 +96,8 @@ public interface IActorReference
     /// <param name="metadata">Optional key-value metadata to attach to the message.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the enqueue operation.</param>
     /// <returns>A <see cref="ValueTask"/> that completes when the message has been queued.</returns>
-    ValueTask TellAsync(
-        object message,
-        Dictionary<string, object?>? metadata,
-        CancellationToken cancellationToken = default
-    );
+    ValueTask TellAsync(object message, Dictionary<string, object?>? metadata = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Registers a listener to receive notifications when this actor reference is terminated.

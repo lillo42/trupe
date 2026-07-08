@@ -38,9 +38,9 @@ public interface IActorProcess
     /// <summary>
     /// Registers a listener to receive notifications about this process's lifecycle events.
     /// </summary>
-    /// <param name="listing">The listener to register.</param>
+    /// <param name="listener">The listener to register.</param>
     /// <returns>An <see cref="IDisposable"/> that, when disposed, automatically unregisters the listener.</returns>
-    IDisposable Register(IActorProcessListener listing);
+    IDisposable Register(IActorProcessListener listener);
 
     /// <summary>
     /// Unregisters a previously registered lifecycle listener.

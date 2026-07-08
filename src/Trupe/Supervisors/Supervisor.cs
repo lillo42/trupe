@@ -18,9 +18,7 @@ namespace Trupe.Supervisors;
 /// <param name="logger">The logger instance for supervisor operations.</param>
 public abstract partial class Supervisor(ILogger logger)
     : AbstractSupervisor(logger),
-        ISupervisor,
-        IHandleActorMessage<AddActor>,
-        IAsyncDisposable
+        IHandleActorMessage<AddActor>
 {
     private bool _initialized;
 
@@ -211,7 +209,7 @@ public abstract partial class Supervisor(ILogger logger)
         var registry = Context.ServiceProvider.GetRequiredService<IActorProcessRegistry>();
         var actorRef = new ActorReference(specification.Name, registry);
 
-        var val = Context.Self.TellAsync(new AddActor(child), cancellationToken);
+        var val = Context.Self.TellAsync(new AddActor(child), cancellationToken: cancellationToken);
 
         if (val.IsCompletedSuccessfully)
         {

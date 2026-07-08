@@ -72,7 +72,7 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     public Uri Name => _inner.Name;
 
     /// <inheritdoc />
-    public TResponse Ask<TResponse>(
+    public TResponse? Ask<TResponse>(
         object request,
         Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
@@ -84,20 +84,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     }
 
     /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
+    public Task<TResponse?> AskAsync<TResponse>(
         object request,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
-        return _inner.AskAsync<TResponse>(request, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public Task<TResponse> AskAsync<TResponse>(
-        object request,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -107,17 +96,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     }
 
     /// <inheritdoc />
-    public void Tell(object message, TimeSpan? timeout = null)
-    {
-        ObjectDisposedGuard.ThrowIf(_isDisposed, nameof(ActorReference));
-
-        _inner.Tell(message, timeout);
-    }
-
-    /// <inheritdoc />
     public void Tell(
         object message,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         TimeSpan? timeout = null
     )
     {
@@ -127,15 +108,9 @@ public class ActorReference : IActorReference, IDisposable, IActorReferenceListe
     }
 
     /// <inheritdoc />
-    public ValueTask TellAsync(object message, CancellationToken cancellationToken = default)
-    {
-        return _inner.TellAsync(message, cancellationToken);
-    }
-
-    /// <inheritdoc />
     public ValueTask TellAsync(
         object message,
-        Dictionary<string, object?>? metadata,
+        Dictionary<string, object?>? metadata = null,
         CancellationToken cancellationToken = default
     )
     {

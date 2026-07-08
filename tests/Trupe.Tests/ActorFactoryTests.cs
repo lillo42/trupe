@@ -21,5 +21,5 @@ public class ActorFactoryTest
         await Assert.That(actor).IsEqualTo(expectedActor);
     }
 
-    public class SomeActor : Actor { }
+    public class SomeActor : Actor;
 }

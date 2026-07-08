@@ -7,8 +7,6 @@ using Trupe.Abstractions;
 using Trupe.Abstractions.Messages;
 using Trupe.Abstractions.Supervisors;
 using Trupe.Abstractions.Supervisors.Commands;
-using Trupe.Abstractions.Supervisors.Events;
-using Trupe.Supervisors.Commands;
 
 namespace Trupe.Supervisors;
 
@@ -183,7 +181,7 @@ public abstract partial class DynamicSupervisor(ILogger logger)
                 return;
             }
 
-            await Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken);
+            await Context.Self.TellAsync(new RemoveChild(child.Actor), cancellationToken: cancellationToken);
         }
     }
 
