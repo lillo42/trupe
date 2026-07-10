@@ -287,6 +287,7 @@ public class ActorProcess : IActorProcess, IAsyncDisposable
         }
         catch (OperationCanceledException ex)
         {
+            stopwatch.Stop();
             TimeoutCounter.Add(1,
                 new KeyValuePair<string, object?>("actor", actor.Context.Name),
                 new KeyValuePair<string, object?>("actor.type", actor.GetType()),
@@ -304,6 +305,7 @@ public class ActorProcess : IActorProcess, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             ErrorCounter.Add(1,
                 new KeyValuePair<string, object?>("actor", actor.Context.Name),
                 new KeyValuePair<string, object?>("actor.type", actor.GetType()),

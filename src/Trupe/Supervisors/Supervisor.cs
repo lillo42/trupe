@@ -22,11 +22,6 @@ public abstract partial class Supervisor(ILogger logger)
     : AbstractSupervisor(logger),
         IHandleActorMessage<AddActor>
 {
-    private static readonly Counter<int> ChildAddedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
-        "supervisor.child.added",
-        unit: "{operations}",
-        description: "Number of child actors successfully added and started by the supervisor.");
-
     private bool _initialized;
 
     /// <summary>
@@ -80,14 +75,8 @@ public abstract partial class Supervisor(ILogger logger)
         CancellationToken cancellationToken
     )
     {
-        Children = Children.Add(message.Child);
         await StartActorAsync(message.Child);
-
-        ChildAddedCounter.Add(1,
-            new KeyValuePair<string, object?>("supervisor", Context.Name),
-            new KeyValuePair<string, object?>("supervisor.type", GetType()),
-            new KeyValuePair<string, object?>("actor.type", message.Child.ActorType),
-            new KeyValuePair<string, object?>("actor", message.Child.Name));
+        AddChildToChildren(message.Child);
     }
 
     /// <summary>

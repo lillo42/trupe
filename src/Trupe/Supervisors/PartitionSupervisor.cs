@@ -75,8 +75,7 @@ public abstract partial class PartitionSupervisor<
                 );
 
                 await StartActorAsync(child);
-
-                Children = Children.Add(child);
+                AddChildToChildren(child);
 
                 Log.WorkerActorStarted(Logger, typeof(TActor).Name, i);
             }

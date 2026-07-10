@@ -177,6 +177,7 @@ public class ActorReferenceProxyProcessor(
         }
         catch (OperationCanceledException)
         {
+            stopwatch.Stop();
             TimeoutCounter.Add(1,
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
@@ -187,6 +188,7 @@ public class ActorReferenceProxyProcessor(
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             ErrorCounter.Add(1,
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),

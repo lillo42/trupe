@@ -14,6 +14,7 @@ using Trupe.Supervisors.Commands;
 
 namespace Trupe.Tests.Diagnostics;
 
+[NotInParallel("diagnostics")]
 public class SupervisorDiagnosticsTests
 {
     [Test]
@@ -28,7 +29,10 @@ public class SupervisorDiagnosticsTests
         var child = CreateChild<ActorA>();
         await supervisor.HandleAsync(new AddActor(child), CancellationToken.None);
 
-        var measurement = collector.Measurements.FirstOrDefault(m => m.Name == "supervisor.child.added");
+        var measurement = collector.Measurements.FirstOrDefault(m =>
+            m.Name == "supervisor.child.added"
+            && m.Tags.Any(t => t.Key == "actor" && t.Value!.Equals(child.Actor.Context.Name))
+        );
         await Assert.That(measurement).IsNotNull();
         await Assert.That(measurement!.Value).IsEqualTo(1);
     }
@@ -45,9 +49,13 @@ public class SupervisorDiagnosticsTests
         var child = CreateChild<ActorA>();
         await supervisor.HandleAsync(new AddActor(child), CancellationToken.None);
 
-        var measurement = collector.Measurements.First(m => m.Name == "supervisor.child.added");
-        var actorTag = measurement.Tags.FirstOrDefault(t => t.Key == "actor");
-        await Assert.That(actorTag.Value).IsEqualTo(child.Name);
+        var measurement = collector.Measurements.FirstOrDefault(m =>
+            m.Name == "supervisor.child.added"
+            && m.Tags.Any(t => t.Key == "actor" && t.Value!.Equals(child.Actor.Context.Name))
+        );
+        await Assert.That(measurement).IsNotNull();
+        var actorTag = measurement!.Tags.First(t => t.Key == "actor");
+        await Assert.That(actorTag.Value).IsEqualTo(child.Actor.Context.Name);
     }
 
     [Test]
@@ -62,7 +70,9 @@ public class SupervisorDiagnosticsTests
         var child = CreateChild<ActorA>();
         await supervisor.HandleAsync(new AddActor(child), CancellationToken.None);
 
-        var measurement = collector.Measurements.LastOrDefault(m => m.Name == "supervisor.children.active");
+        var measurement = collector.Measurements.LastOrDefault(m =>
+            m.Name == "supervisor.children.active"
+        );
         await Assert.That(measurement).IsNotNull();
         await Assert.That(measurement!.Value).IsEqualTo(1);
     }
@@ -79,7 +89,9 @@ public class SupervisorDiagnosticsTests
         await supervisor.HandleAsync(new AddActor(CreateChild<ActorA>()), CancellationToken.None);
         await supervisor.HandleAsync(new AddActor(CreateChild<ActorA>()), CancellationToken.None);
 
-        var measurement = collector.Measurements.LastOrDefault(m => m.Name == "supervisor.children.active");
+        var measurement = collector.Measurements.LastOrDefault(m =>
+            m.Name == "supervisor.children.active"
+        );
         await Assert.That(measurement).IsNotNull();
         await Assert.That(measurement!.Value).IsEqualTo(2);
     }
@@ -139,8 +151,9 @@ public class SupervisorDiagnosticsTests
     {
         public ImmutableList<Child> GetChildren() => Children;
 
-        protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        protected override ValueTask OnInitializeAsync(
+            CancellationToken cancellationToken = default
+        ) => ValueTask.CompletedTask;
     }
 
     public class ActorA : Actor;

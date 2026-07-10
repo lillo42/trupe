@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -43,12 +43,12 @@ public class ChannelMailbox : IMailbox
         description: "Current number of messages waiting in the mailbox.");
 
     private static readonly Histogram<long> EnqueueDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
-        "mailbox.enqueue_duration",
+        "mailbox.enqueue.duration",
         unit: "ms",
         description: "Duration of mailbox enqueue operations in milliseconds.");
 
     private static readonly Histogram<long> DequeueDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
-        "mailbox.dequeue_duration",
+        "mailbox.dequeue.duration",
         unit: "ms",
         description: "Duration of mailbox dequeue operations in milliseconds.");
 
@@ -143,6 +143,7 @@ public class ChannelMailbox : IMailbox
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             activity?.AddException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to enqueue message.");
         }
@@ -184,11 +185,13 @@ public class ChannelMailbox : IMailbox
         }
         catch (OperationCanceledException)
         {
+            stopwatch.Stop();
             activity?.SetStatus(ActivityStatusCode.Error, "Dequeue cancelled.");
             return null;
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
             activity?.AddException(ex);
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to dequeue message.");
             throw;

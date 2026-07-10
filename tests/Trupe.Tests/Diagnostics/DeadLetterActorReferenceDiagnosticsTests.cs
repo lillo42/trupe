@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using TUnit.Core;
 
 namespace Trupe.Tests.Diagnostics;
 
+[NotInParallel("diagnostics")]
 public class DeadLetterActorReferenceDiagnosticsTests
 {
     private static readonly Uri ActorUri = new("trupe://localhost/dead-letter-test");
@@ -29,8 +31,11 @@ public class DeadLetterActorReferenceDiagnosticsTests
 
         try { @ref.Tell(new object()); } catch (NotImplementedException) { }
 
-        var measurement = collector.Measurements.First(m => m.Name == "actor-reference.dead-letter");
-        var operationTag = measurement.Tags.FirstOrDefault(t => t.Key == "operation");
+        var measurement = collector.Measurements
+            .FirstOrDefault(m => m.Name == "actor-reference.dead-letter" &&
+                                 m.Tags.Any(t => t.Key == "operation" && (string?)t.Value == "tell"));
+        await Assert.That(measurement).IsNotNull();
+        var operationTag = measurement!.Tags.First(t => t.Key == "operation");
         await Assert.That((string?)operationTag.Value).IsEqualTo("tell");
     }
 
@@ -81,8 +86,11 @@ public class DeadLetterActorReferenceDiagnosticsTests
 
         @ref.Ask<object>(new object());
 
-        var measurement = collector.Measurements.First(m => m.Name == "actor-reference.dead-letter");
-        var operationTag = measurement.Tags.FirstOrDefault(t => t.Key == "operation");
+        var measurement = collector.Measurements
+            .FirstOrDefault(m => m.Name == "actor-reference.dead-letter" &&
+                                 m.Tags.Any(t => t.Key == "operation" && (string?)t.Value == "ask"));
+        await Assert.That(measurement).IsNotNull();
+        var operationTag = measurement!.Tags.First(t => t.Key == "operation");
         await Assert.That((string?)operationTag.Value).IsEqualTo("ask");
     }
 

@@ -70,6 +70,11 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         unit: "ms",
         description: "Duration of child actor restart operations in milliseconds.");
 
+    private static readonly Counter<int> ChildAddedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.added",
+        unit: "{operations}",
+        description: "Number of child actors successfully added and started by the supervisor.");
+
     private bool _isDisposed;
 
     /// <summary>
@@ -655,6 +660,20 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         await child.Process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         Log.ActorStarted(Logger, child.ActorType, child.Name);
+    }
+
+    /// <summary>
+    /// Adds a child to the active children list and records the child-added metric.
+    /// </summary>
+    /// <param name="child">The child metadata to add.</param>
+    protected virtual void AddChildToChildren(Child child)
+    {
+        Children = Children.Add(child);
+        ChildAddedCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", child.ActorType),
+            new KeyValuePair<string, object?>("actor", child.Name));
     }
 
     /// <inheritdoc />
