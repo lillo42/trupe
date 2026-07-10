@@ -138,7 +138,7 @@ public class MySupervisor : Supervisor
     protected override int MaxRestarts => 5;
     protected override TimeSpan RestartWindow => TimeSpan.FromSeconds(10);
 
-    protected override FailureAction GetFailureAction(Child child, Exception exception)
+    protected override FailureAction ResolveFailureAction(Child child, Exception exception)
     {
         return exception switch
         {
@@ -155,6 +155,8 @@ public class MySupervisor : Supervisor
     }
 }
 ```
+
+> **Note:** The base `ResolveFailureAction` only returns `Restart` or `Escalate`. If you want `Stop` or `Resume` for specific exception types, you must override it as shown above.
 
 ## Next Steps
 

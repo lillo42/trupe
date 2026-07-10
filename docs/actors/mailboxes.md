@@ -21,19 +21,21 @@ Sender D ──Tell───►┘
 ## The `IMailbox` Interface
 
 ```csharp
-public interface IMailbox : IAsyncEnumerable<IMessage>
+public interface IMailbox
 {
     ValueTask EnqueueAsync(IMessage message, CancellationToken cancellationToken = default);
-    ValueTask CleanAsync();
+    ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
+    IEnumerable<KeyValuePair<string, object?>> Metadata { get; set; }
 }
 ```
 
-| Method | Description |
+| Member | Description |
 |--------|-------------|
 | `EnqueueAsync` | Adds a message to the mailbox. |
-| `CleanAsync` | Clears all messages and resets the mailbox (used during actor restarts). |
+| `DequeueAsync` | Removes and returns the next message, or `null` when the mailbox is completed. |
+| `Metadata` | Key-value pairs carrying contextual information (e.g., actor identity, tracing identifiers). |
 
-The mailbox implements `IAsyncEnumerable<IMessage>`, allowing the actor process to consume messages asynchronously.
+The actor process consumes messages by awaiting `DequeueAsync`, which provides natural backpressure without blocking threads.
 
 ## ChannelMailbox
 
@@ -47,7 +49,7 @@ An unbounded mailbox has no capacity limit. Messages are always accepted:
 var mailbox = new ChannelMailbox();
 ```
 
-This is the default when no mailbox is specified. It is suitable for most use cases, but be aware that a slow consumer with a fast producer can lead to unbounded memory growth.
+This is the default when no mailbox is specified (`maxSize` of `0` or less creates an unbounded channel). It is suitable for most use cases, but be aware that a slow consumer with a fast producer can lead to unbounded memory growth.
 
 ### Bounded Mailbox
 
@@ -76,14 +78,14 @@ var mailbox = new ChannelMailbox(
 
 ## Configuring Mailboxes per Actor
 
-You can specify a custom mailbox when adding a child actor to a supervisor using `ChildSpecification`:
+You can specify a custom mailbox factory when adding a child actor to a supervisor using `ChildSpecification`:
 
 ```csharp
 protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
 {
     var spec = new ChildSpecification(typeof(WorkerActor))
     {
-        Mailbox = new ChannelMailbox(maxSize: 50, fullMode: BoundedChannelFullMode.DropOldest),
+        MailboxFactory = _ => new ChannelMailbox(maxSize: 50, fullMode: BoundedChannelFullMode.DropOldest),
         RestartPolicy = RestartPolicy.Permanent
     };
 

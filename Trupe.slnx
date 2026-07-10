@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Trupe.Abstractions/Trupe.Abstractions.csproj" />
     <Project Path="src/Trupe.Extensions.Hosting/Trupe.Extensions.Hosting.csproj" />
+    <Project Path="src/Trupe.OpenTelemetry/Trupe.OpenTelemetry.csproj" />
     <Project Path="src/Trupe/Trupe.csproj" />
   </Folder>
   <Folder Name="/tests/">

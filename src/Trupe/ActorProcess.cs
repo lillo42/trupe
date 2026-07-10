@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,19 +30,72 @@ namespace Trupe;
 /// - Integration with AOT (Ahead-Of-Time) compilation constraints
 /// - Graceful cancellation and shutdown
 /// </remarks>
-public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyncDisposable
+public class ActorProcess : IActorProcess, IAsyncDisposable
 {
+    private static readonly Counter<int> StopCounter = TrupeDiagnostics.Meter.CreateCounter<int>("actor-process.stop",
+        unit: "{operations}",
+        description: "Number of actor processes stopped gracefully via a Stop message.");
+
+    private static readonly Counter<int> KillCounter = TrupeDiagnostics.Meter.CreateCounter<int>("actor-process.kill",
+        unit: "{operations}",
+        description: "Number of actor processes killed via cancellation.");
+
+    private static readonly Counter<int> SuccessCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "actor-process.message-processing.success",
+        unit: "{operations}",
+        description: "Number of messages processed successfully.");
+
+    private static readonly Counter<int> ErrorCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "actor-process.message-processing.failed",
+        unit: "{operations}",
+        description: "Number of messages that failed to process due to an unhandled exception.");
+
+    private static readonly Counter<int> TimeoutCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "actor-process.message-processing.timeout",
+        unit: "{operations}",
+        description: "Number of messages whose processing was cancelled or timed out.");
+
+    private static readonly Counter<int> SkippedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "actor-process.message-processing.skipped",
+        unit: "{operations}",
+        description: "Number of messages skipped due to a null message or a cancelled message token.");
+
+    private static readonly Histogram<long> MessageProcessingDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
+        "actor-process.message-processing.duration",
+        unit: "ms",
+        description: "Duration of actor message processing in milliseconds.");
+
     private readonly ActorProcessListenerCollection _collection = [];
 
     private bool _isDisposed;
     private CancellationTokenSource? _cts;
     private Task? _executing;
+    private readonly IActor _actor;
+
+    /// <summary>
+    /// Manages the execution lifecycle and message processing for an actor instance.
+    /// </summary>
+    /// <remarks>
+    /// This class orchestrates the core actor message loop, coordinating between
+    /// the actor's behavior (<see cref="IActor"/>), message queue (<see cref="IMailbox"/>),
+    /// and the runtime environment. It provides:
+    /// - Lifecycle management (start/stop)
+    /// - Efficient typed message dispatch using cached delegates
+    /// - Integration with AOT (Ahead-Of-Time) compilation constraints
+    /// - Graceful cancellation and shutdown
+    /// </remarks>
+    public ActorProcess(IActor actor, IMailbox mailbox)
+    {
+        _actor = actor;
+        Mailbox = mailbox;
+        Actor = actor;
+    }
 
     /// <inheritdoc />
-    public IMailbox Mailbox { get; set; } = mailbox;
+    public IMailbox Mailbox { get; set; }
 
     /// <inheritdoc />
-    public IActor Actor { get; set; } = actor;
+    public IActor Actor { get; set; }
 
     /// <inheritdoc />
     public async Task StartAsync(params IMessage[] messages)
@@ -80,6 +135,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
 
         await _cts.CancelAsync();
 
+        KillCounter.Add(1,
+            new KeyValuePair<string, object?>("actor", Actor.Context.Name),
+            new KeyValuePair<string, object?>("actor.type", Actor.GetType()));
+
+
         try
         {
             await _executing;
@@ -107,6 +167,12 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         {
             if (message.CancellationToken.IsCancellationRequested)
             {
+                SkippedCounter.Add(1,
+                    new KeyValuePair<string, object?>("actor", _actor.Context.Name),
+                    new KeyValuePair<string, object?>("actor.type", _actor.GetType()),
+                    new KeyValuePair<string, object?>("message.type", message.GetType()),
+                    new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
+
                 continue;
             }
 
@@ -123,6 +189,11 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
             var message = await Mailbox.DequeueAsync(cancellationToken);
             if (message == null || message.CancellationToken.IsCancellationRequested)
             {
+                SkippedCounter.Add(1,
+                    new KeyValuePair<string, object?>("actor", _actor.Context.Name),
+                    new KeyValuePair<string, object?>("actor.type", _actor.GetType()),
+                    new KeyValuePair<string, object?>("message.type", message?.GetType()),
+                    new KeyValuePair<string, object?>("message.payload.type", message?.Payload.GetType()));
                 continue;
             }
 
@@ -133,16 +204,20 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
 
             if (message.Payload is Stop)
             {
+                StopCounter.Add(1,
+                    new KeyValuePair<string, object?>("actor", _actor.Context.Name),
+                    new KeyValuePair<string, object?>("actor.type", _actor.GetType()));
+
                 _collection.InvokeOnStopped(this, TerminatedReason.Stopped);
-                
+
                 if (message is IAskMessage askMessage)
                 {
                     askMessage.SetResult(null);
                 }
-                
+
                 return;
             }
-            
+
             await ProcessAsync(Actor, message, cts.Token);
         }
     }
@@ -158,6 +233,15 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         CancellationToken cancellationToken
     )
     {
+        var activity = TrupeDiagnostics.ActivitySource
+            .StartActivity("actor-process.message-processing", ActivityKind.Internal, null)?
+            .SetTag("actor", actor.Context.Name)
+            .SetTag("actor.type", actor.GetType())
+            .SetTag("message.type", message.GetType())
+            .SetTag("message.payload.type", message.Payload.GetType());
+
+        var stopwatch = Stopwatch.StartNew();
+
         var previousServiceProvider = actor.Context.ServiceProvider;
         var previousMetadata = new Dictionary<string, object?>(actor.Context.Metadata);
 
@@ -165,7 +249,7 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         var scope = GetOrCreateServiceScope(message);
         var serviceProvider = scope.ServiceProvider;
         actor.Context.ServiceProvider = serviceProvider;
-        
+
         try
         {
             var pipelineFactory = serviceProvider.GetRequiredService<IReceivePipelineFactory>();
@@ -190,9 +274,29 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
             accessor.ReceiveContext = context;
 
             await pipeline.ExecuteAsync(context);
+
+            stopwatch.Stop();
+
+            SuccessCounter.Add(1,
+                new KeyValuePair<string, object?>("actor", actor.Context.Name),
+                new KeyValuePair<string, object?>("actor.type", actor.GetType()),
+                new KeyValuePair<string, object?>("message.type", message.GetType()),
+                new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
+
+            activity?.SetStatus(ActivityStatusCode.Ok, "Message processed successfully.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
+            stopwatch.Stop();
+            TimeoutCounter.Add(1,
+                new KeyValuePair<string, object?>("actor", actor.Context.Name),
+                new KeyValuePair<string, object?>("actor.type", actor.GetType()),
+                new KeyValuePair<string, object?>("message.type", message.GetType()),
+                new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
+
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, "Message processing was cancelled or timed out.");
+
             // It was requested to stop the process
             if (message is IAskMessage askMessage)
             {
@@ -201,11 +305,27 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            ErrorCounter.Add(1,
+                new KeyValuePair<string, object?>("actor", actor.Context.Name),
+                new KeyValuePair<string, object?>("actor.type", actor.GetType()),
+                new KeyValuePair<string, object?>("message.type", message.GetType()),
+                new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
+
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, "Failed to process message.");
+
             _collection.InvokeOnFailed(this, message, ex);
             throw;
         }
         finally
         {
+            MessageProcessingDuration.Record(stopwatch.ElapsedMilliseconds,
+                new KeyValuePair<string, object?>("actor", actor.Context.Name),
+                new KeyValuePair<string, object?>("actor.type", actor.GetType()),
+                new KeyValuePair<string, object?>("message.type", message.GetType()),
+                new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
+
             await DisposeContextIfNecessary(message, scope);
 
             actor.Context.Metadata = previousMetadata;
@@ -215,6 +335,8 @@ public class ActorProcess(IActor actor, IMailbox mailbox) : IActorProcess, IAsyn
             {
                 accessor.ReceiveContext = null;
             }
+
+            activity?.Dispose();
         }
     }
 

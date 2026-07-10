@@ -14,6 +14,8 @@ The **RootSupervisor** is the top-level supervisor that sits at the root of the 
 
 ### Configuration
 
+Root supervisor children are configured through `RootSupervisorOptions`. Use the extension methods on the options object to add actors or supervisors:
+
 ```csharp
 services.AddTrupe(config =>
 {
@@ -22,7 +24,11 @@ services.AddTrupe(config =>
 
     config.ConfigureRootSupervisor(options =>
     {
-        // Configure root supervisor options
+        options.AddActor<RootWorkerActor>();
+        options.AddSupervisor<RootCoordinatorSupervisor>(child =>
+        {
+            child.RestartPolicy = RestartPolicy.Permanent;
+        });
     });
 });
 ```
@@ -56,19 +62,15 @@ A **DynamicSupervisor** allows you to add and remove child actors at runtime, af
 public abstract class DynamicSupervisor : Supervisor, IHandleActorMessage<RemoveChild>
 {
     protected sealed override Strategy Strategy => Strategy.OneForOne;
+    protected override bool Initialized => false; // children can be added at any time
 
-    // Sends AddActor message asynchronously
-    protected override IActorReference AddChild(IChildSpecification specification);
-
-    protected override ValueTask<IActorReference> AddChildAsync(
-        IChildSpecification specification, CancellationToken cancellationToken);
-
-    // Remove a child actor
     protected virtual void RemoveActor(IActorReference reference);
     protected virtual ValueTask RemoveActorAsync(
         IActorReference reference, CancellationToken cancellationToken);
 }
 ```
+
+`DynamicSupervisor` inherits the `AddChild` / `AddChildAsync` methods from `Supervisor`, but because `Initialized` always returns `false`, those methods can be called at any time — not just inside `OnInitializeAsync`.
 
 ### Example
 
@@ -123,15 +125,25 @@ A **PartitionSupervisor** creates a fixed number of worker actors of the same ty
 ### Interface
 
 ```csharp
-public abstract class PartitionSupervisor<TActor> : Actor, ISupervisor
+public abstract class PartitionSupervisor<TActor> : AbstractSupervisor, ISupervisor, IAsyncDisposable
+    where TActor : IActor
 {
+    protected PartitionSupervisor(ILogger logger);
+    protected PartitionSupervisor(ILogger logger, int workers);
+
     protected virtual int Workers { get; }
     protected virtual Strategy Strategy => Strategy.OneForOne;
     protected virtual RestartPolicy DefaultRestartPolicy => RestartPolicy.Permanent;
     protected virtual int MaxRestarts => 3;
     protected virtual TimeSpan RestartWindow => TimeSpan.FromSeconds(5);
+
+    protected virtual IActorReference GetActorReference<TKey>(TKey key) where TKey : notnull;
+    protected virtual int GetHashcode<TKey>(TKey key) where TKey : notnull;
+    protected virtual IMailbox CreateMailbox(IServiceProvider provider);
 }
 ```
+
+If you omit the worker count, the supervisor creates `Environment.ProcessorCount` children. Override `GetHashcode<TKey>` to customize how partition keys are distributed across workers.
 
 ### Example
 
@@ -184,7 +196,7 @@ public class MyCustomSupervisor : Supervisor
         return ValueTask.CompletedTask;
     }
 
-    protected override FailureAction GetFailureAction(Child child, Exception exception)
+    protected override FailureAction ResolveFailureAction(Child child, Exception exception)
     {
         if (child.ActorType == typeof(DatabaseActor))
         {

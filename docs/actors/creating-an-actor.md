@@ -131,9 +131,9 @@ greeterRef.Tell(new Greet("World"));
 await greeterRef.TellAsync(new Greet("World"));
 ```
 
-`Tell` is non-blocking — the message is enqueued in the actor's mailbox and the caller continues immediately.
+`Tell` enqueues the message in the actor's mailbox and returns once the message has been queued. The synchronous `Tell` and `Ask` methods block the calling thread until the enqueue (or response) completes; use `TellAsync` or `AskAsync` for fully asynchronous operation.
 
-All `Tell` and `Ask` methods accept an optional `metadata` parameter of type `Dictionary<string, object>?` for attaching contextual information (e.g., correlation IDs) without modifying your message types.
+All `Tell` and `Ask` methods accept an optional `metadata` parameter of type `Dictionary<string, object?>?` for attaching contextual information (e.g., correlation IDs) without modifying your message types.
 
 ## Using Dependency Injection
 

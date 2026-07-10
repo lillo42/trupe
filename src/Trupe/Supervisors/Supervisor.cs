@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,8 +75,8 @@ public abstract partial class Supervisor(ILogger logger)
         CancellationToken cancellationToken
     )
     {
-        Children = Children.Add(message.Child);
         await StartActorAsync(message.Child);
+        AddChildToChildren(message.Child);
     }
 
     /// <summary>

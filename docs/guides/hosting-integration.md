@@ -46,10 +46,9 @@ The `ActorSystemHostedService` implements `IHostedService`:
 ```csharp
 public class ActorSystemHostedService(ActorSystem system) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        system.Start();
-        return Task.CompletedTask;
+        await system.StartAsync();
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -61,12 +60,12 @@ public class ActorSystemHostedService(ActorSystem system) : IHostedService
 
 | Event | Action |
 |-------|--------|
-| Application starts | `ActorSystem.Start()` is called, which initializes the root supervisor and all child actors. |
+| Application starts | `ActorSystem.StartAsync()` is called, which initializes the root supervisor and all child actors. |
 | Application stops | `ActorSystem.StopAsync()` is called, which gracefully shuts down all actors in the hierarchy. |
 
 ## With ASP.NET Core
 
-Trupe works seamlessly with ASP.NET Core applications:
+Trupe works seamlessly with ASP.NET Core applications. A common pattern is to expose actor references through a supervisor registered as a singleton, or to resolve them through `IActorProcessRegistry`:
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -80,14 +79,11 @@ builder.Services.AddTrupe(config =>
 
 var app = builder.Build();
 
-app.MapPost("/orders", async (PlaceOrder order, IActorRegister register) =>
+app.MapPost("/orders", async (PlaceOrder order, IActorProcessRegistry registry) =>
 {
-    if (register.TryGet("order-processor", out var actorRef))
-    {
-        var result = await actorRef.AskAsync<OrderResult>(order);
-        return Results.Ok(result);
-    }
-    return Results.StatusCode(503);
+    var actorRef = registry.GetReference(new Uri("trupe://localhost/order-processor"));
+    var result = await actorRef.AskAsync<OrderResult>(order);
+    return result is not null ? Results.Ok(result) : Results.StatusCode(503);
 });
 
 app.Run();

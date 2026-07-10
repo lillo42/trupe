@@ -22,7 +22,10 @@ Trupe is an actor model framework for .NET that provides a simple yet powerful w
 | `Trupe.Abstractions` | Core interfaces and abstractions (`IActor`, `ISupervisor`, `IActorReference`, etc.) |
 | `Trupe` | Actor model implementation with supervision, mailboxes, and DI integration |
 | `Trupe.Extensions.Hosting` | `IHostedService` integration for managing actor system lifecycle |
+| `Trupe.OpenTelemetry` | Tracing and metrics instrumentation (`AddTrupeInstrumentation`) |
 
 ## Requirements
 
 - .NET 8.0, 9.0, or 10.0
+- .NET Framework 4.6.2
+- .NET Standard 2.0

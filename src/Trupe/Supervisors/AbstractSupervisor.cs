@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +35,46 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         IActorProcessListener,
         IAsyncDisposable
 {
+    private static readonly Counter<int> FailureReceivedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.failure.received",
+        unit: "{operations}",
+        description: "Number of ActorProcessFailed messages received by the supervisor.");
+
+    private static readonly Counter<int> RestartCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.restart",
+        unit: "{operations}",
+        description: "Number of child actor restarts performed by the supervisor.");
+
+    private static readonly Counter<int> StopCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.stop",
+        unit: "{operations}",
+        description: "Number of child actor stops performed by the supervisor.");
+
+    private static readonly Counter<int> EscalateCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.escalate",
+        unit: "{operations}",
+        description: "Number of failures escalated to the parent supervisor.");
+
+    private static readonly Counter<int> ResumeCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.resume",
+        unit: "{operations}",
+        description: "Number of child actor resumes performed by the supervisor.");
+
+    private static readonly Gauge<int> ChildrenActiveGauge = TrupeDiagnostics.Meter.CreateGauge<int>(
+        "supervisor.children.active",
+        unit: "{children}",
+        description: "Current number of active child actors managed by this supervisor.");
+
+    private static readonly Histogram<long> RestartDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
+        "supervisor.child.restart.duration",
+        unit: "ms",
+        description: "Duration of child actor restart operations in milliseconds.");
+
+    private static readonly Counter<int> ChildAddedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.added",
+        unit: "{operations}",
+        description: "Number of child actors successfully added and started by the supervisor.");
+
     private bool _isDisposed;
 
     /// <summary>
@@ -70,10 +112,25 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     /// </summary>
     protected virtual TimeSpan RestartWindow => TimeSpan.FromSeconds(5);
 
+    private ImmutableList<Child> _children = [];
+
     /// <summary>
     /// Gets or sets the immutable list of child actors managed by this supervisor.
     /// </summary>
-    protected ImmutableList<Child> Children { get; set; } = [];
+    protected ImmutableList<Child> Children
+    {
+        get => _children;
+        set
+        {
+            _children = value;
+            if (Context is { Name: { } name })
+            {
+                ChildrenActiveGauge.Record(value.Count,
+                    new KeyValuePair<string, object?>("supervisor", name),
+                    new KeyValuePair<string, object?>("supervisor.type", GetType()));
+            }
+        }
+    }
 
     /// <summary>
     /// Gets the references to all child actors managed by this supervisor.
@@ -183,6 +240,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     )
     {
         ObjectDisposedGuard.ThrowIf(_isDisposed, GetType().Name);
+
+        FailureReceivedCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", message.Process.Actor.GetType()),
+            new KeyValuePair<string, object?>("actor", message.Process.Actor.Context.Name));
 
         using (Logger.BeginScope("{MessageType}", message.GetType()))
         using (Logger.BeginScope("{SupervisorName}", Context.Name))
@@ -358,6 +421,13 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         await child.Process.KillAsync();
         child.Actor.Context.Self.MarkAsTerminate(reason);
 
+        StopCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", child.ActorType),
+            new KeyValuePair<string, object?>("actor", child.Name),
+            new KeyValuePair<string, object?>("reason", reason));
+
         Log.ActorStopped(Logger, child.ActorType, child.Name);
     }
 
@@ -379,6 +449,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
             message.Payload.GetType()
         );
 
+        EscalateCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", child.ActorType),
+            new KeyValuePair<string, object?>("actor", child.Name));
+
         throw new EscalateFailureException(
             "Unable to handle actor failure",
             child.Reference,
@@ -397,6 +473,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         Log.ResumingActor(Logger, child.ActorType, child.Name);
 
         await child.Process.StartAsync();
+
+        ResumeCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", child.ActorType),
+            new KeyValuePair<string, object?>("actor", child.Name));
 
         Log.ActorResumed(Logger, child.ActorType, child.Name);
     }
@@ -434,6 +516,9 @@ public abstract partial class AbstractSupervisor(ILogger logger)
     {
         Log.RestartingActor(Logger, child.ActorType, child.Name);
         var reference = child.Reference;
+        var actorName = child.Name;
+        var actorType = child.ActorType;
+        var stopwatch = Stopwatch.StartNew();
 
         await BeforeRestartActorAsync(child);
 
@@ -442,6 +527,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         await DisposeObjectAsync(ctx);
 
         var mailbox = await GetOrCreateMailboxAsync(child);
+        mailbox.Metadata =
+        [
+            new KeyValuePair<string, object?>("actor", actorName),
+            new KeyValuePair<string, object?>("actor.type", actorType),
+            new KeyValuePair<string, object?>("mailbox.type", mailbox.GetType())
+        ];
 
         child.Actor = ActorFactory.CreateActor(child.ActorType);
 
@@ -457,6 +548,22 @@ public abstract partial class AbstractSupervisor(ILogger logger)
             new TellMessage(new InitializeActor(), []),
             new TellMessage(new AfterRestartActor(), [])
         );
+
+        stopwatch.Stop();
+
+        RestartCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", actorType),
+            new KeyValuePair<string, object?>("actor", actorName),
+            new KeyValuePair<string, object?>("strategy", Strategy));
+
+        RestartDuration.Record(stopwatch.ElapsedMilliseconds,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", actorType),
+            new KeyValuePair<string, object?>("actor", actorName),
+            new KeyValuePair<string, object?>("strategy", Strategy));
 
         Log.ActorRestarted(Logger, child.ActorType, child.Name);
     }
@@ -553,6 +660,20 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         await child.Process.StartAsync(new TellMessage(new InitializeActor(), []));
 
         Log.ActorStarted(Logger, child.ActorType, child.Name);
+    }
+
+    /// <summary>
+    /// Adds a child to the active children list and records the child-added metric.
+    /// </summary>
+    /// <param name="child">The child metadata to add.</param>
+    protected virtual void AddChildToChildren(Child child)
+    {
+        Children = Children.Add(child);
+        ChildAddedCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", child.ActorType),
+            new KeyValuePair<string, object?>("actor", child.Name));
     }
 
     /// <inheritdoc />

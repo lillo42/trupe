@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +21,11 @@ public abstract partial class DynamicSupervisor(ILogger logger)
     : Supervisor(logger),
         IHandleActorMessage<RemoveChild>
 {
+    private static readonly Counter<int> ChildRemovedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.child.removed",
+        unit: "{operations}",
+        description: "Number of child actors explicitly removed from the dynamic supervisor.");
+
     /// <inheritdoc />
     protected sealed override Strategy Strategy => Strategy.OneForOne;
 
@@ -50,7 +57,17 @@ public abstract partial class DynamicSupervisor(ILogger logger)
             }
 
             Log.DisposingChild(Logger, child.Actor.GetType(), child.Actor.Context.Name);
+
+            var removedActorType = child.ActorType;
+            var removedActorName = child.Name;
+
             Children = Children.Remove(child);
+
+            ChildRemovedCounter.Add(1,
+                new KeyValuePair<string, object?>("supervisor", Context.Name),
+                new KeyValuePair<string, object?>("supervisor.type", GetType()),
+                new KeyValuePair<string, object?>("actor.type", removedActorType),
+                new KeyValuePair<string, object?>("actor", removedActorName));
 
             var ctx = child.Actor.Context;
             await DisposeObjectAsync(child.Process);

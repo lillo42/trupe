@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using NSubstitute;
 using Trupe.Abstractions.Messages;
@@ -26,17 +27,18 @@ public class ChannelMailboxTest
     [Test]
     public async Task EnqueueAsync_Should_FollowTheConfiguration()
     {
-        var mailbox = new ChannelMailbox(1);
+        var mailbox = new ChannelMailbox(1, BoundedChannelFullMode.DropWrite);
 
         await mailbox.EnqueueAsync(Substitute.For<IMessage>());
 
-        var cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(1));
         var message = Substitute.For<IMessage>();
 
         await Assert
-            .That(async () => await mailbox.EnqueueAsync(message, cts.Token))
-            .Throws<OperationCanceledException>();
+            .That(async () => await mailbox.EnqueueAsync(message))
+            .ThrowsNothing();
+
+        var dequeued = await mailbox.DequeueAsync();
+        await Assert.That(dequeued).IsNotEqualTo(message);
     }
 
     [Test]
