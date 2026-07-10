@@ -76,5 +76,9 @@ public interface IMailbox
     /// </returns>
     ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
     
+    /// <summary>
+    /// Gets or sets a collection of key-value pairs that carry additional context about this mailbox,
+    /// such as actor identity, queue capacity, or tracing identifiers.
+    /// </summary>
     IEnumerable<KeyValuePair<string, object?>> Metadata { get; set; }
 }

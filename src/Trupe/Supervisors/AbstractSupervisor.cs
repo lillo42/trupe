@@ -522,6 +522,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         await DisposeObjectAsync(ctx);
 
         var mailbox = await GetOrCreateMailboxAsync(child);
+        mailbox.Metadata =
+        [
+            new KeyValuePair<string, object?>("actor", actorName),
+            new KeyValuePair<string, object?>("actor.type", actorType),
+            new KeyValuePair<string, object?>("mailbox.type", mailbox.GetType())
+        ];
 
         child.Actor = ActorFactory.CreateActor(child.ActorType);
 
