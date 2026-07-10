@@ -84,6 +84,6 @@ Trupe brings the actor model to .NET with a focus on simplicity and performance:
 | Actor Reference | `IActorReference` with `Tell` and `Ask` methods |
 | Supervision | `Supervisor` base class with configurable strategies |
 | Actor Creation | `IActorFactory` with dependency injection support |
-| Actor Registry | `IActorRegister` for looking up actors by name |
+| Actor Lookup | `IActorProcessRegistry` and `ActorReference` URI-based resolution |
 
 The next sections will walk you through creating actors, handling messages, and building supervision trees.

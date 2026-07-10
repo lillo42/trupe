@@ -13,7 +13,7 @@ Every message in Trupe flows through two pipelines:
 Tell/Ask ──► [Middleware 1] ──► [Middleware 2] ──► Mailbox ──► [Middleware 1] ──► [Middleware 2] ──► Actor.HandleAsync
 ```
 
-- **Send Pipeline** — executes when a message is sent to an actor via `Tell` or `Ask`. The built-in `MailboxDispatcherMiddleware` delivers the message to the actor's mailbox.
+- **Send Pipeline** — executes when a message is sent to an actor via `Tell` or `Ask`. The built-in `ActorProcessDispatcherMiddleware` delivers the message to the actor's mailbox.
 - **Receive Pipeline** — executes when an actor processes a message from its mailbox. The built-in `ActorMessageDispatcherMiddleware` dispatches the message to the typed handler.
 
 ## Built-in Middlewares
@@ -21,8 +21,8 @@ Tell/Ask ──► [Middleware 1] ──► [Middleware 2] ──► Mailbox ─
 | Middleware | Pipeline | Order | Description |
 |-----------|----------|-------|-------------|
 | `AskMiddleware` | Receive | `int.MinValue` | Handles request-response (`Ask`) pattern by managing response completion. |
-| `ActorMessageDispatcherMiddleware` | Receive | `int.MaxValue` | Dispatches messages to typed `IHandleActorMessage<T>` handlers. |
-| `MailboxDispatcherMiddleware` | Send | `int.MaxValue` | Delivers the message to the actor's mailbox. |
+| `ActorMessageDispatcherMiddleware` | Receive | `int.MaxValue` | Dispatches messages to typed `IHandleActorMessage<T>` handlers or the untyped `HandleAsync(object?)` fallback. |
+| `ActorProcessDispatcherMiddleware` | Send | `int.MaxValue` | Delivers the message to the actor process mailbox. |
 
 ## Creating a Middleware
 
@@ -160,13 +160,15 @@ public ValueTask HandleAsync(GetProduct message, CancellationToken cancellationT
 }
 ```
 
+If `Scope` is omitted, it defaults based on the middleware type's implemented interfaces (`ISendMiddleware` and/or `IReceiveMiddleware`).
+
 ## Middleware Execution Order
 
 Middlewares execute in ascending `Order` value:
 
 1. Built-in `AskMiddleware` (order: `int.MinValue`) — always first in receive pipeline
 2. Your middlewares (ordered by `Order` value)
-3. Built-in `ActorMessageDispatcherMiddleware` / `MailboxDispatcherMiddleware` (order: `int.MaxValue`) — always last
+3. Built-in `ActorMessageDispatcherMiddleware` / `ActorProcessDispatcherMiddleware` (order: `int.MaxValue`) — always last
 
 Within the same order, middlewares are invoked in registration order.
 
@@ -180,7 +182,8 @@ Available in send middlewares:
 |----------|-------------|
 | `Message` | The message being sent. |
 | `ActorType` | The type of the target actor. |
-| `Reference` | The `IActorReference` of the target actor. |
+| `Target` | The `IActorReference` of the target actor. |
+| `Items` | A mutable dictionary for data shared between middlewares in the same pipeline execution. |
 | `Metadata` | Pipeline metadata collection (from middleware configs). |
 | `ServiceProvider` | Scoped service provider for this pipeline execution. |
 | `CancellationToken` | Cancellation token. |
@@ -194,6 +197,7 @@ Available in receive middlewares:
 | `Message` | The message being processed. |
 | `Actor` | The actor instance processing the message. |
 | `ActorContext` | The actor's context (includes `Self`, `Response`, `ServiceProvider`). |
+| `Items` | A mutable dictionary for data shared between middlewares in the same pipeline execution. |
 | `Metadata` | Pipeline metadata collection. |
 | `ServiceProvider` | Scoped service provider for this pipeline execution. |
 | `CancellationToken` | Cancellation token. |

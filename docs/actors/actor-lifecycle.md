@@ -59,7 +59,7 @@ Every actor in Trupe goes through a well-defined lifecycle. Understanding these 
 
 ### `InitializeAsync`
 
-Called once when the actor first starts, before it begins processing messages. Use it for setup work:
+Called once when the actor first starts, before it begins processing messages. It is triggered by the `InitializeActor` system message sent by the supervisor when the actor is created. Use it for setup work:
 
 ```csharp
 public class DatabaseActor : Actor
@@ -76,7 +76,7 @@ public class DatabaseActor : Actor
 
 ### `BeforeRestartAsync`
 
-Called before the actor is restarted due to a failure. Use it to clean up resources from the previous instance:
+Called directly by the supervisor before the failed actor instance is disposed and replaced with a new instance during a restart. Use it to clean up resources from the previous instance:
 
 ```csharp
 public override async ValueTask BeforeRestartAsync(CancellationToken cancellationToken = default)
@@ -89,9 +89,11 @@ public override async ValueTask BeforeRestartAsync(CancellationToken cancellatio
 }
 ```
 
+> **Note:** `BeforeRestartAsync` is not delivered as a mailbox message. It is invoked synchronously by `AbstractSupervisor.BeforeRestartActorAsync`, and any exceptions it throws are swallowed so the restart can proceed.
+
 ### `AfterRestartAsync`
 
-Called after a new instance of the actor has been created following a restart. Use it to re-initialize state:
+Called after a new instance of the actor has been created following a restart. It is triggered by the `AfterRestartActor` system message. Use it to re-initialize state:
 
 ```csharp
 public override async ValueTask AfterRestartAsync(CancellationToken cancellationToken = default)
@@ -162,6 +164,8 @@ When an actor fails (throws an exception during message processing), the supervi
 | **Stop** | Actor is terminated permanently. No restart hooks are called. |
 | **Resume** | The actor continues processing the next message as if nothing happened. |
 | **Escalate** | The failure is passed to the parent supervisor for handling. |
+
+The base `AbstractSupervisor.ResolveFailureAction` returns only `Restart` or `Escalate`. To use `Stop` or `Resume`, override `ResolveFailureAction` and return the desired action. `RestartPolicy.Temporary` also causes a child to be stopped on failure regardless of the resolved action.
 
 ## Restart Limits
 

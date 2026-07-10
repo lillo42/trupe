@@ -72,21 +72,29 @@ This provides:
 Every actor has access to a `Context` object of type `IActorContext`:
 
 ```csharp
-public interface IActorContext : IAsyncDisposable
+public interface IActorContext
 {
     IActorReference Self { get; }
+    Uri Name { get; }
     object? Response { get; set; }
-    IServiceProvider ServiceProvider { get; }
+    Dictionary<string, object?> Metadata { get; set; }
+    IServiceProvider ServiceProvider { get; set; }
+    void DeathWatch(IActorReference reference);
+    void UnWatchDeath(IActorReference reference);
 }
 ```
 
 | Property | Description |
 |----------|-------------|
-| `Self` | The actor's own `IActorReference`. Useful for passing your reference to other actors. |
+| `Self` | The actor's own `IActorReference`. Useful for passing your reference to other actors or sending messages to itself. |
+| `Name` | The actor's unique URI identifier. |
 | `Response` | Set this property to provide a return value when responding to an `Ask` request. |
+| `Metadata` | A mutable dictionary of contextual data propagated through the pipeline for the current message. |
 | `ServiceProvider` | A scoped `IServiceProvider` for the current message. Use it to resolve scoped services within a message handler. |
+| `DeathWatch` | Registers the current actor to receive an `ActorTerminated` message when the referenced actor stops. |
+| `UnWatchDeath` | Removes a previously registered death watch. |
 
-A new `IActorContext` (and its associated DI scope) is created for **each message** processed by the actor. This means scoped services resolved through `Context.ServiceProvider` are isolated per message and automatically disposed after processing.
+A new `IActorContext` (and its associated DI scope) is created for **each message** processed by the actor. This means scoped services resolved through `Context.ServiceProvider` are isolated per message and automatically disposed after processing. System messages such as `InitializeActor` and `AfterRestartActor` are processed in the actor's existing scope instead.
 
 ## Communicating with Actors
 
@@ -142,14 +150,31 @@ var result = await actorRef.AskAsync<int>(new Add(2, 3), new Dictionary<string, 
 
 ### Termination Events
 
-You can subscribe to an actor's termination event:
+You can observe when another actor terminates by registering a death watch from the actor's context:
 
 ```csharp
-actorRef.OnTerminate += (sender, args) =>
-{
-    Console.WriteLine($"Actor terminated: {args.Reason}");
-};
+// Inside an actor, watch another actor
+Context.DeathWatch(otherActorRef);
 ```
+
+When `otherActorRef` terminates, the current actor receives an `ActorTerminated` system message:
+
+```csharp
+public class WatchdogActor : Actor, IHandleActorMessage<ActorTerminated>
+{
+    public ValueTask HandleAsync(ActorTerminated message, CancellationToken cancellationToken = default)
+    {
+        Console.WriteLine($"Actor {message.Reference.Name} terminated: {message.Reason}");
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+To stop watching, call `Context.UnWatchDeath(otherActorRef)`.
+
+## Typed Dispatch and Native AOT
+
+Typed dispatch via `IHandleActorMessage<T>` is used when dynamic code is supported. In Native AOT builds the runtime may not discover these generic interfaces, so the system falls back to the untyped `HandleAsync(object?)` method. You can support both modes by implementing the typed interface **and** overriding `HandleAsync(object?)` with a pattern-matching fallback.
 
 ## Next Steps
 

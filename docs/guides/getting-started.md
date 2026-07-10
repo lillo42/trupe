@@ -95,25 +95,41 @@ app.Run();
 
 ## Step 5: Send Messages
 
-Use the `IActorRegister` to look up actors and send messages:
+The easiest way to send messages to child actors is to capture the `IActorReference` returned by `AddChild` in your supervisor:
 
 ```csharp
-// Look up an actor
-var register = serviceProvider.GetRequiredService<IActorRegister>();
-
-if (register.TryGet("greeter", out var greeterRef))
+public class AppSupervisor : Supervisor
 {
-    // Fire-and-forget
-    greeterRef.Tell(new Greet("World"));
-}
+    private IActorReference _greeterRef = null!;
+    private IActorReference _calculatorRef = null!;
 
-if (register.TryGet("calculator", out var calcRef))
-{
-    // Request-response
-    var result = await calcRef.AskAsync<int>(new Add(2, 3));
-    Console.WriteLine($"2 + 3 = {result}");
+    public AppSupervisor(ILogger<AppSupervisor> logger)
+        : base(logger) { }
+
+    protected override ValueTask OnInitializeAsync(CancellationToken cancellationToken = default)
+    {
+        _greeterRef = AddChild<GreeterActor>();
+        _calculatorRef = AddChild<CalculatorActor>();
+        return ValueTask.CompletedTask;
+    }
+
+    public void Greet(string name) => _greeterRef.Tell(new Greet(name));
+
+    public async Task<int> AddAsync(int a, int b)
+        => await _calculatorRef.AskAsync<int>(new Add(a, b));
 }
 ```
+
+Alternatively, you can resolve an actor by its URI through `IActorProcessRegistry`:
+
+```csharp
+var registry = serviceProvider.GetRequiredService<IActorProcessRegistry>();
+var greeterRef = new ActorReference("greeter", registry);
+
+greeterRef.Tell(new Greet("World"));
+```
+
+> **Note:** `IActorProcessRegistry` maps actor references to their running processes. `ActorReference` uses the registry to look up the actual runtime reference by name or URI. If the actor is not found, operations on the returned reference will behave as dead letters.
 
 ## Complete Example
 

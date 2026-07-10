@@ -73,11 +73,14 @@ Trupe uses `[DynamicallyAccessedMembers]` annotations throughout to inform the t
 
 | Type/Member | Annotation | Purpose |
 |-------------|-----------|---------|
-| `IChildSpecification.ActorType` | `PublicConstructors \| PublicMethods` | Preserves actor constructors and handler methods for DI and pipeline dispatch. |
-| `ChildSpecification` constructor | `PublicConstructors \| PublicMethods` | Same as above for the concrete type. |
-| `ActorSystemConfigurator.AddActor<TActor>` | `PublicConstructors` on `TActor` | Ensures DI can instantiate the actor. |
-| `Supervisor.AddChild<TActor>` | `PublicConstructors \| PublicMethods` | Preserves members for child actors added at runtime. |
-| `ActorReference` constructor | `PublicMethods` on `actorType` | Ensures pipeline factories can discover handler methods. |
+| `ActorSystemConfigurator.AddActor<TActor>` | `PublicConstructors \| PublicMethods` on `TActor` | Preserves constructors for DI and methods for typed dispatch. |
+| `ActorSystemConfigurator.AddActor(Type)` | `PublicConstructors \| PublicMethods` on `actorType` | Same as above for runtime type registration. |
+| `ActorSystemConfigurator.AddSupervisor<TSupervisor>` | `PublicConstructors \| PublicMethods` on `TSupervisor` | Preserves supervisor constructors and methods. |
+| `ActorSystemConfigurator.Use<TMiddleware>` | `PublicConstructors \| PublicMethods` on `TMiddleware` | Ensures middleware can be constructed and invoked. |
+| `ActorConfigurator.UseForMessage` | `PublicConstructors \| PublicMethods` on middleware/actor types | Preserves per-actor and per-message middleware members. |
+| `Supervisor.AddChild<TActor>` | `PublicConstructors \| PublicMethods` on `TActor` | Preserves members for child actors added at runtime. |
+| `IChildSpecification.ActorType` | `PublicConstructors \| PublicMethods` | Preserves actor constructors and handler methods. |
+| `ChildSpecification.ActorType` | `PublicConstructors \| PublicMethods` | Same as above for the concrete specification type. |
 | Pipeline factory `Create` methods | `PublicMethods` on `actorType` | Enables middleware attribute discovery and handler resolution. |
 
 ### What this means for you

@@ -38,8 +38,14 @@ The `ActorSystemConfigurator` provides the full configuration API:
 | `AddMiddleware<TMiddleware>(...)` | Registers a middleware in DI (instance, factory, or type). |
 | `ConfigureRootSupervisor(Action<RootSupervisorOptions>)` | Configures options for the root supervisor. |
 | `SetRootSupervisor<TSupervisor>()` | Replaces the default root supervisor with a custom one. |
-| `SetActorRegister(IActorRegister)` | Replaces the default actor registry. |
-| `AddHostedService()` | Adds the hosted service for auto start/stop (requires `Trupe.Extensions.Hosting`). |
+| `SetActorRegistry(IActorProcessRegistry)` | Replaces the default actor process registry. |
+
+The hosted service extension is provided by `Trupe.Extensions.Hosting`:
+
+| Method | Description |
+|--------|-------------|
+| `AddHostedService()` (on `ActorSystemConfigurator`) | Adds the `ActorSystemHostedService` for auto start/stop. |
+| `AddActorSystemHostedService()` (on `IServiceCollection`) | Same as above, registered separately. |
 
 You can also access the underlying `IServiceCollection` directly:
 
@@ -67,7 +73,7 @@ public class OrderActor : Actor, IHandleActorMessage<PlaceOrder>
 }
 ```
 
-The scope is automatically disposed after the message has been processed, so scoped services follow their expected lifetime.
+The scope is automatically disposed after the message has been processed, so scoped services follow their expected lifetime. System messages that implement `IUseSameActorScopeServiceMessage` — such as `InitializeActor` and `AfterRestartActor` — are processed in the actor's existing scope instead of a new per-message scope.
 
 ## Actor Constructor Injection
 
@@ -130,10 +136,10 @@ public class DataPipelineSupervisor : Supervisor
 
 ## The Actor Factory
 
-Trupe uses `IActorFactory` to create actor instances. The default implementation (`DependencyInjectionActorFactory`) resolves actors from the DI container:
+Trupe uses `IActorFactory` to create actor instances. The default implementation (`ActorFactory`) resolves actors from the DI container:
 
 ```csharp
-public class DependencyInjectionActorFactory(IServiceProvider serviceProvider) : IActorFactory
+public class ActorFactory(IServiceProvider serviceProvider) : IActorFactory
 {
     public IActor CreateActor(Type actorType)
         => (IActor)serviceProvider.GetRequiredService(actorType);
@@ -142,43 +148,45 @@ public class DependencyInjectionActorFactory(IServiceProvider serviceProvider) :
 
 This means actors are created with full DI support, including scoped and transient dependencies.
 
-## The Actor Registry
+## The Actor Process Registry
 
-The `IActorRegister` is a thread-safe registry for looking up actors by name:
+The `IActorProcessRegistry` maps actor references to their running processes and resolves references by URI:
 
 ```csharp
-public interface IActorRegister
+public interface IActorProcessRegistry
 {
-    void Register(string id, IActorReference actor);
-    bool TryRegister(string id, IActorReference actor);
-    IActorReference? Get(string id);
-    bool TryGet(string id, out IActorReference? actor);
-    bool Contains(string id);
+    void Register(IActorReference reference, IActorProcess process);
+    void UnRegister(IActorReference reference);
+    IActorReference GetReference(Uri reference);
+    IActorProcess GetProcess(IActorReference reference);
 }
 ```
 
-By default, Trupe uses a singleton `ActorRegister.Instance`. You can replace it with your own:
+By default, Trupe uses `ActorProcessRegistry.Instance`. You can replace it with your own:
 
 ```csharp
 services.AddTrupe(config =>
 {
-    config.SetActorRegister(new MyCustomActorRegister());
+    config.SetActorRegistry(new MyCustomActorProcessRegistry());
 });
 ```
 
 ### Using the Registry
 
 ```csharp
-var register = serviceProvider.GetRequiredService<IActorRegister>();
+var registry = serviceProvider.GetRequiredService<IActorProcessRegistry>();
 
-// Register an actor
-register.Register("greeter", actorRef);
+// Resolve a reference by URI
+var greeterRef = registry.GetReference(new Uri("trupe://localhost/greeter"));
 
-// Look up an actor
-if (register.TryGet("greeter", out var greeterRef))
-{
-    greeterRef.Tell(new Greet("World"));
-}
+greeterRef.Tell(new Greet("World"));
+```
+
+For convenience, the `ActorReference` class wraps the registry so you can resolve by name:
+
+```csharp
+var greeterRef = new ActorReference("greeter", registry);
+greeterRef.Tell(new Greet("World"));
 ```
 
 ## Next Steps

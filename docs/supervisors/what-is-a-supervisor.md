@@ -65,10 +65,12 @@ public abstract class Supervisor : Actor, ISupervisor
     protected virtual ValueTask<IActorReference> AddChildAsync(IChildSpecification specification, CancellationToken cancellationToken = default);
 
     // Hooks
-    protected virtual ValueTask OnInitializeAsync(CancellationToken cancellationToken = default);
-    protected virtual FailureAction GetFailureAction(Child child, Exception exception);
+    protected abstract ValueTask OnInitializeAsync(CancellationToken cancellationToken = default);
+    protected virtual FailureAction ResolveFailureAction(Child child, Exception exception);
 }
 ```
+
+> **Important:** `Supervisor` is **preemptive**. You can only call `AddChild` while the supervisor is initializing (inside `OnInitializeAsync`). After `InitializeAsync` completes, calling `AddChild` throws `SupervisorAlreadyInitializedException`. Use `DynamicSupervisor` if you need to add children at runtime.
 
 ### Key Properties
 
@@ -103,7 +105,7 @@ You can also add children with custom specifications:
 ```csharp
 var spec = new ChildSpecification(typeof(WorkerActor))
 {
-    Mailbox = new ChannelMailbox(maxSize: 100),
+    MailboxFactory = _ => new ChannelMailbox(maxSize: 100),
     RestartPolicy = RestartPolicy.Transient
 };
 
@@ -115,8 +117,8 @@ AddChild(spec);
 When a child actor throws an exception, the following happens:
 
 1. The actor process catches the exception.
-2. An `ActorFailed` message is sent to the supervisor.
-3. The supervisor calls `GetFailureAction()` to determine the response.
+2. An `ActorProcessFailed` message is sent to the supervisor.
+3. The supervisor calls `ResolveFailureAction()` to determine the response.
 4. The supervisor applies the chosen action based on the configured `Strategy`.
 
 ### Failure Actions
@@ -128,12 +130,14 @@ When a child actor throws an exception, the following happens:
 | `Resume` | The actor continues processing the next message without restarting. |
 | `Escalate` | The failure is passed to the supervisor's own supervisor. |
 
+The base `ResolveFailureAction` returns only `Restart` or `Escalate`. `Stop` and `Resume` are used internally (for example, `RestartPolicy.Temporary` causes a `Stop`) or when a derived supervisor overrides `ResolveFailureAction`.
+
 ### Customizing Failure Handling
 
-Override `GetFailureAction` to implement custom failure logic:
+Override `ResolveFailureAction` to implement custom failure logic:
 
 ```csharp
-protected override FailureAction GetFailureAction(Child child, Exception exception)
+protected override FailureAction ResolveFailureAction(Child child, Exception exception)
 {
     return exception switch
     {
@@ -177,8 +181,10 @@ The supervisor maintains an immutable list of `Child` objects:
 public class Child
 {
     public IActor Actor { get; set; }
-    public IMailbox Mailbox { get; }
-    public LocalActorReference Reference { get; }
+    public IActorProcess Process { get; set; }
+    public Func<IServiceProvider, IMailbox> MailboxFactory { get; }
+    public Uri Name => Actor.Context.Name;
+    public IActorReference Reference => Actor.Context.Self;
     public RestartPolicy RestartPolicy { get; }
     public Type ActorType { get; }
     public int RestartCount { get; set; }
