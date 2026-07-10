@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+   <PropertyGroup>
+    <TargetFrameworks>$(TrupeTargetFrameworks)</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>OpenTelemetry instrumentation for the Trupe actor system. Registers Trupe's ActivitySource and Meter with the OpenTelemetry pipeline to capture distributed traces and metrics for actor message processing, mailbox queues, supervisor lifecycle events, and dead letters.</Description>
+    <PackageTags>trupe;actor;opentelemetry;otel;tracing;metrics;instrumentation</PackageTags>
+  </PropertyGroup>
+
+   <ItemGroup>
+     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+   </ItemGroup>
+
+   <ItemGroup>
+     <ProjectReference Include="..\Trupe\Trupe.csproj" />
+   </ItemGroup>
+
+</Project>

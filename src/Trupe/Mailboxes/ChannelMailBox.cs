@@ -1,4 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -26,11 +30,37 @@ public class ChannelMailbox : IMailbox
 {
     private readonly Channel<IMessage> _channel;
 
+    private static readonly Counter<int> EnqueueCounter = TrupeDiagnostics.Meter.CreateCounter<int>("mailbox.enqueue",
+        unit: "{operations}",
+        description: "Number of messages enqueued into the mailbox.");
+
+    private static readonly Counter<int> DequeueCounter = TrupeDiagnostics.Meter.CreateCounter<int>("mailbox.dequeue",
+        unit: "{operations}",
+        description: "Number of messages dequeued from the mailbox.");
+
+    private static readonly Gauge<long> MailboxLength = TrupeDiagnostics.Meter.CreateGauge<long>("mailbox.length",
+        unit: "{messages}",
+        description: "Current number of messages waiting in the mailbox.");
+
+    private static readonly Histogram<long> EnqueueDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
+        "mailbox.enqueue_duration",
+        unit: "ms",
+        description: "Duration of mailbox enqueue operations in milliseconds.");
+
+    private static readonly Histogram<long> DequeueDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
+        "mailbox.dequeue_duration",
+        unit: "ms",
+        description: "Duration of mailbox dequeue operations in milliseconds.");
+
+    private long _length;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ChannelMailbox"/>.
     /// </summary>
     public ChannelMailbox()
-        : this(-1) { }
+        : this(-1)
+    {
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChannelMailbox"/> class with
@@ -87,18 +117,50 @@ public class ChannelMailbox : IMailbox
         }
     }
 
+
+    /// <inheritdoc />
+    public IEnumerable<KeyValuePair<string, object?>> Metadata { get; set; } = [];
+
     /// <inheritdoc />
     public async ValueTask EnqueueAsync(
         IMessage message,
         CancellationToken cancellationToken = default
     )
     {
-        await _channel.Writer.WriteAsync(message, cancellationToken);
+        var activity =
+            TrupeDiagnostics.ActivitySource.StartActivity("mailbox.enqueue", ActivityKind.Internal, null, Metadata);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            await _channel.Writer.WriteAsync(message, cancellationToken);
+
+            stopwatch.Stop();
+            var length = Interlocked.Increment(ref _length);
+
+            MailboxLength.Record(length, Metadata.ToArray());
+            activity?.SetStatus(ActivityStatusCode.Ok, "Message enqueued successfully.");
+            EnqueueCounter.Add(1, Metadata.ToArray());
+        }
+        catch (Exception ex)
+        {
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, "Failed to enqueue message.");
+        }
+        finally
+        {
+            EnqueueDuration.Record(stopwatch.ElapsedMilliseconds, Metadata.ToArray());
+            activity?.Dispose();
+        }
     }
+
 
     /// <inheritdoc />
     public async ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default)
     {
+        var activity =
+            TrupeDiagnostics.ActivitySource.StartActivity("mailbox.dequeue", ActivityKind.Internal, null, Metadata);
+
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             if (
@@ -106,14 +168,35 @@ public class ChannelMailbox : IMailbox
                 && _channel.Reader.TryRead(out var message)
             )
             {
+                stopwatch.Stop();
+
+                var length = Interlocked.Decrement(ref _length);
+                
+                activity?.SetStatus(ActivityStatusCode.Ok, "Message dequeued successfully.");
+                DequeueCounter.Add(1, Metadata.ToArray());
+                MailboxLength.Record(length, Metadata.ToArray());
                 return message;
             }
 
+            stopwatch.Stop();
+            activity?.SetStatus(ActivityStatusCode.Ok, "No message available.");
             return null;
         }
         catch (OperationCanceledException)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Dequeue cancelled.");
             return null;
+        }
+        catch (Exception ex)
+        {
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, "Failed to dequeue message.");
+            throw;
+        }
+        finally
+        {
+            DequeueDuration.Record(stopwatch.ElapsedMilliseconds, Metadata.ToArray());
+            activity?.Dispose();
         }
     }
 }

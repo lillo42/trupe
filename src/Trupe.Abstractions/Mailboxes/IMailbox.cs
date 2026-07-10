@@ -75,4 +75,6 @@ public interface IMailbox
     /// or <see langword="null"/> if the mailbox has been completed or drained.
     /// </returns>
     ValueTask<IMessage?> DequeueAsync(CancellationToken cancellationToken = default);
+    
+    IEnumerable<KeyValuePair<string, object?>> Metadata { get; set; }
 }

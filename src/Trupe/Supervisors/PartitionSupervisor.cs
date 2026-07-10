@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -26,6 +28,11 @@ public abstract partial class PartitionSupervisor<
 >(ILogger logger, int workers) : AbstractSupervisor(logger), ISupervisor, IAsyncDisposable
     where TActor : IActor
 {
+    private static readonly Counter<int> PartitionRoutedCounter = TrupeDiagnostics.Meter.CreateCounter<int>(
+        "supervisor.partition.routed",
+        unit: "{operations}",
+        description: "Number of messages routed to a partition worker by the partition supervisor.");
+
     /// <summary>
     /// Gets the number of worker actors managed by this supervisor.
     /// </summary>
@@ -93,6 +100,12 @@ public abstract partial class PartitionSupervisor<
         var index = hash % Children.Count;
 
         Log.ResolvingPartition(Logger, typeof(TKey).Name, index, Children.Count);
+
+        PartitionRoutedCounter.Add(1,
+            new KeyValuePair<string, object?>("supervisor", Context.Name),
+            new KeyValuePair<string, object?>("supervisor.type", GetType()),
+            new KeyValuePair<string, object?>("actor.type", typeof(TActor)),
+            new KeyValuePair<string, object?>("partition.index", index));
 
         return Children[index].Reference;
     }
