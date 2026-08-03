@@ -3,7 +3,7 @@
 A lightweight, high-performance .NET implementation of the Actor Model for learning and practical use.
 
 [![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
 [![AOT Compatible](https://img.shields.io/badge/AOT-Compatible-green.svg)](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/)
 
 ## Overview
@@ -248,7 +248,7 @@ if (actorRegister.TryGet("my-actor", out var actorRef))
 
 ## License
 
-This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the LGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
