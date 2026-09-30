@@ -38,9 +38,11 @@ public class ChannelMailbox : IMailbox
         unit: "{operations}",
         description: "Number of messages dequeued from the mailbox.");
 
+#if !NET8_0
     private static readonly Gauge<long> MailboxLength = TrupeDiagnostics.Meter.CreateGauge<long>("mailbox.length",
         unit: "{messages}",
         description: "Current number of messages waiting in the mailbox.");
+#endif
 
     private static readonly Histogram<long> EnqueueDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
         "mailbox.enqueue.duration",
@@ -137,14 +139,19 @@ public class ChannelMailbox : IMailbox
             stopwatch.Stop();
             var length = Interlocked.Increment(ref _length);
 
+#if !NET8_0
             MailboxLength.Record(length, Metadata.ToArray());
+#endif
             activity?.SetStatus(ActivityStatusCode.Ok, "Message enqueued successfully.");
             EnqueueCounter.Add(1, Metadata.ToArray());
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
+            
+#if !NET8_0
             activity?.AddException(ex);
+#endif
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to enqueue message.");
         }
         finally
@@ -175,7 +182,10 @@ public class ChannelMailbox : IMailbox
                 
                 activity?.SetStatus(ActivityStatusCode.Ok, "Message dequeued successfully.");
                 DequeueCounter.Add(1, Metadata.ToArray());
+                
+#if !NET8_0
                 MailboxLength.Record(length, Metadata.ToArray());
+#endif
                 return message;
             }
 
@@ -192,7 +202,10 @@ public class ChannelMailbox : IMailbox
         catch (Exception ex)
         {
             stopwatch.Stop();
+            
+#if !NET8_0
             activity?.AddException(ex);
+#endif
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to dequeue message.");
             throw;
         }
