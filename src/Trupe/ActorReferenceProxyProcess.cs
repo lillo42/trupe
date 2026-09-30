@@ -138,6 +138,7 @@ public class ActorReferenceProxyProcessor(
         CancellationToken cancellationToken = default
     )
     {
+        var actorName = Name.ToString();
         var activity = TrupeDiagnostics.ActivitySource.StartActivity("actor-reference.sending", ActivityKind.Internal, null);
         activity?.SetTag("actor.type", actorType);
         activity?.SetTag("message.type", message.GetType());
@@ -170,6 +171,7 @@ public class ActorReferenceProxyProcessor(
             stopwatch.Stop();
 
             SuccessCounter.Add(1,
+                new KeyValuePair<string, object?>("actor.name", actorName),
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload?.GetType()));
@@ -179,6 +181,7 @@ public class ActorReferenceProxyProcessor(
         {
             stopwatch.Stop();
             TimeoutCounter.Add(1,
+                new KeyValuePair<string, object?>("actor.name", actorName),
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload?.GetType()));
@@ -190,16 +193,22 @@ public class ActorReferenceProxyProcessor(
         {
             stopwatch.Stop();
             ErrorCounter.Add(1,
+                new KeyValuePair<string, object?>("actor.name", actorName),
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload?.GetType()));
+            
+#if !NET8_0
             activity?.AddException(ex);
+#endif
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to send message.");
             throw;
         }
         finally
         {
             SendingDuration.Record(stopwatch.ElapsedMilliseconds,
+                
+                new KeyValuePair<string, object?>("actor.name", actorName),
                 new KeyValuePair<string, object?>("actor.type", actorType),
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload?.GetType())

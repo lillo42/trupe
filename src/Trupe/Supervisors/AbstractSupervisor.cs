@@ -60,10 +60,12 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         unit: "{operations}",
         description: "Number of child actor resumes performed by the supervisor.");
 
+#if !NET8_0
     private static readonly Gauge<int> ChildrenActiveGauge = TrupeDiagnostics.Meter.CreateGauge<int>(
         "supervisor.children.active",
         unit: "{children}",
         description: "Current number of active child actors managed by this supervisor.");
+#endif
 
     private static readonly Histogram<long> RestartDuration = TrupeDiagnostics.Meter.CreateHistogram<long>(
         "supervisor.child.restart.duration",
@@ -123,12 +125,15 @@ public abstract partial class AbstractSupervisor(ILogger logger)
         set
         {
             _children = value;
+            
+#if !NET8_0
             if (Context is { Name: { } name })
             {
                 ChildrenActiveGauge.Record(value.Count,
                     new KeyValuePair<string, object?>("supervisor", name),
                     new KeyValuePair<string, object?>("supervisor.type", GetType()));
             }
+#endif
         }
     }
 

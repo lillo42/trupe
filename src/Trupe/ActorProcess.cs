@@ -294,7 +294,9 @@ public class ActorProcess : IActorProcess, IAsyncDisposable
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
 
+#if !NET8_0
             activity?.AddException(ex);
+#endif
             activity?.SetStatus(ActivityStatusCode.Error, "Message processing was cancelled or timed out.");
 
             // It was requested to stop the process
@@ -312,7 +314,9 @@ public class ActorProcess : IActorProcess, IAsyncDisposable
                 new KeyValuePair<string, object?>("message.type", message.GetType()),
                 new KeyValuePair<string, object?>("message.payload.type", message.Payload.GetType()));
 
+#if !NET8_0
             activity?.AddException(ex);
+#endif
             activity?.SetStatus(ActivityStatusCode.Error, "Failed to process message.");
 
             _collection.InvokeOnFailed(this, message, ex);
